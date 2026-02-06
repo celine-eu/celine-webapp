@@ -1,0 +1,18 @@
+version: "3"
+
+vars:
+  APP_MODULE: celine.webapp.main:app
+  HOST: 0.0.0.0
+  PORT: 8014
+
+tasks:
+  backend:
+    desc: Run FastAPI BFF with reload (development)
+    cmds:
+      - uv run uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
+
+  frontend:
+    desc: Run SvelteKit frontend
+    dir: frontend
+    cmds:
+      - npm run dev

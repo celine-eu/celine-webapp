@@ -1,0 +1,32 @@
+# Dumpster configuration
+
+extensions:
+  - .py
+  - .md
+  - .json
+  - .yaml
+  - .toml
+  - .svelte
+  - .ts
+  - .js
+  - .html
+
+dumps:
+  - name: all
+    contents:
+      - src
+      - frontend
+      - tests
+      - README.md
+      - pyproject.toml
+
+  - name: backend
+    contents:
+      - src
+      - tests
+      - README.md
+      - pyproject.toml
+
+  - name: frontend
+    contents:
+      - frontend
