@@ -9,64 +9,29 @@ from pydantic import BaseModel
 
 from celine.webapp.settings import settings
 from celine.webapp.db import get_db, User as DBUser
+from celine.sdk.auth import JwtUser
 
 
-class User(BaseModel):
-    """User from JWT token."""
-
-    sub: str
-    email: str
-    name: str
-
-
-def get_user_from_request(request: Request) -> User:
+def get_user_from_request(request: Request) -> JwtUser:
     """
-    Extract and validate user from JWT in request header.
+    Extract and validate user from JWT in request header using celine-sdk.
 
-    This is a minimal JWT extraction without signature verification,
-    assuming oauth2_proxy or similar has already validated the token.
+    The SDK handles JWT parsing and claim extraction.
     """
     token = request.headers.get(settings.jwt_header_name)
     if not token:
         raise HTTPException(status_code=401, detail="Missing authentication token")
 
-    if "bearer" in token.lower():
-        token = token.split(" ")[1]
-
-    # Split JWT and decode payload (without verification)
     try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            raise ValueError("Invalid JWT format")
-
-        # Decode payload (add padding if needed)
-        payload_b64 = parts[1]
-        padding = 4 - (len(payload_b64) % 4)
-        if padding != 4:
-            payload_b64 += "=" * padding
-
-        import base64
-
-        payload_bytes = base64.urlsafe_b64decode(payload_b64)
-        payload = json.loads(payload_bytes)
-
-        print()
-
-        # Extract user info
-        sub = payload.get("sub")
-        email = payload.get("email")
-        name = payload.get("name") or email
-
-        if not sub or not email:
-            raise ValueError("Missing required claims")
-
-        return User(sub=sub, email=email, name=name)
+        # Use SDK to parse JWT (no verification - oauth2_proxy already verified)
+        user = JwtUser.from_token(token, verify=False)
+        return user
 
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
 
 
-async def ensure_user_exists(user: User, db: AsyncSession) -> DBUser:
+async def ensure_user_exists(user: JwtUser, db: AsyncSession) -> DBUser:
     """
     Ensure user exists in database, create if not.
     Returns the database user object.
@@ -99,5 +64,5 @@ def get_client_ip(request: Request) -> str:
 
 
 # Type aliases for dependency injection
-UserDep = Annotated[User, Depends(get_user_from_request)]
+UserDep = Annotated[JwtUser, Depends(get_user_from_request)]
 DbDep = Annotated[AsyncSession, Depends(get_db)]
