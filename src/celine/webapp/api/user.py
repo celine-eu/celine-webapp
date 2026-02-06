@@ -1,0 +1,143 @@
+"""User-related API routes."""
+from datetime import datetime, timezone
+from fastapi import APIRouter, Request, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from celine.webapp.api.deps import UserDep, DbDep, ensure_user_exists, get_client_ip
+from celine.webapp.api.schemas import (
+    MeResponse,
+    AcceptTermsRequest,
+    SuccessResponse,
+)
+from celine.webapp.db import (
+    PolicyAcceptance,
+    Settings,
+    WebPushSubscription,
+    SmartMeterAssociation,
+)
+from celine.webapp.settings import settings as app_settings
+
+
+router = APIRouter(prefix="/api", tags=["user"])
+
+
+async def has_smart_meter(user_id: str, db: AsyncSession) -> bool:
+    """Check if user has a smart meter association."""
+    result = await db.execute(
+        select(SmartMeterAssociation).filter(SmartMeterAssociation.user_id == user_id)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def get_accepted_policy_version(user_id: str, db: AsyncSession) -> str | None:
+    """Get the accepted policy version for a user."""
+    result = await db.execute(
+        select(PolicyAcceptance)
+        .filter(PolicyAcceptance.user_id == user_id)
+        .order_by(PolicyAcceptance.accepted_at.desc())
+    )
+    acceptance = result.scalar_one_or_none()
+    return acceptance.policy_version if acceptance else None
+
+
+async def terms_required_for(user_id: str, db: AsyncSession) -> tuple[bool, str | None]:
+    """
+    Check if terms acceptance is required.
+    Returns (required: bool, accepted_version: str | None)
+    """
+    accepted = await get_accepted_policy_version(user_id, db)
+    required = accepted != app_settings.policy_version
+    return required, accepted
+
+
+async def get_user_settings(user_id: str, db: AsyncSession) -> Settings:
+    """Get or create user settings."""
+    result = await db.execute(
+        select(Settings).filter(Settings.user_id == user_id)
+    )
+    settings_obj = result.scalar_one_or_none()
+    
+    if not settings_obj:
+        settings_obj = Settings(
+            user_id=user_id,
+            simple_mode=False,
+            font_scale=1.0,
+            email_notifications=False,
+        )
+        db.add(settings_obj)
+        await db.commit()
+        await db.refresh(settings_obj)
+    
+    return settings_obj
+
+
+async def webpush_configured(user_id: str, db: AsyncSession) -> bool:
+    """Check if user has web push configured."""
+    result = await db.execute(
+        select(WebPushSubscription).filter(WebPushSubscription.user_id == user_id)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+@router.get("/me", response_model=MeResponse)
+async def me(
+    request: Request,
+    user: UserDep,
+    db: DbDep,
+) -> MeResponse:
+    """Get current user information."""
+    await ensure_user_exists(user, db)
+    
+    required, accepted_version = await terms_required_for(user.sub, db)
+    settings = await get_user_settings(user.sub, db)
+    
+    return MeResponse(
+        user={"sub": user.sub, "email": user.email, "name": user.name},
+        has_smart_meter=await has_smart_meter(user.sub, db),
+        terms_required=required,
+        policy_version=app_settings.policy_version,
+        accepted_policy_version=accepted_version,
+        simple_mode=settings.simple_mode,
+        font_scale=settings.font_scale,
+        notification_permission=request.headers.get(
+            "X-REC-Notification-Permission", "default"
+        ),
+        webpush_configured=await webpush_configured(user.sub, db),
+    )
+
+
+@router.post("/terms/accept", response_model=SuccessResponse)
+async def accept_terms(
+    request: Request,
+    body: AcceptTermsRequest,
+    user: UserDep,
+    db: DbDep,
+) -> SuccessResponse:
+    """Accept terms and conditions."""
+    await ensure_user_exists(user, db)
+    
+    if not body.accept:
+        raise HTTPException(status_code=400, detail="accept must be true")
+    
+    # Check if already accepted
+    result = await db.execute(
+        select(PolicyAcceptance)
+        .filter(
+            PolicyAcceptance.user_id == user.sub,
+            PolicyAcceptance.policy_version == app_settings.policy_version,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    
+    if not existing:
+        acceptance = PolicyAcceptance(
+            user_id=user.sub,
+            policy_version=app_settings.policy_version,
+            accepted_at=datetime.now(timezone.utc),
+            accepted_from_ip=get_client_ip(request),
+        )
+        db.add(acceptance)
+        await db.commit()
+    
+    return SuccessResponse()

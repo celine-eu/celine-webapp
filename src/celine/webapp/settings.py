@@ -1,0 +1,38 @@
+"""Application settings using pydantic-settings."""
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    """Application configuration."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+    )
+
+    # Server
+    host: str = "0.0.0.0"
+    port: int = 8014
+
+    # Database - using asyncpg driver for async support
+    database_url: str = (
+        "postgresql+asyncpg://postgres:securepassword123@172.17.0.1:15432/celine_webapp"
+    )
+    database_echo: bool = False
+
+    # Security
+    policy_version: str = "2024-01-01"
+    vapid_public_key: str = "BLMbGhB..."  # placeholder
+    jwt_header_name: str = "authorization"
+
+    # CORS
+    cors_origins: list[str] = ["http://localhost:5173"]
+
+    # Optional overrides
+    smart_meter_api_url: Optional[str] = None
+    digital_twin_api_url: Optional[str] = None
+
+
+# Global settings instance
+settings = Settings()

@@ -16,3 +16,15 @@ tasks:
     dir: frontend
     cmds:
       - npm run dev
+
+  migrate:
+    desc: Run all pending database migrations
+    cmds:
+      - uv run alembic upgrade head
+
+  migrate:create:
+    desc: Create a new migration based on model changes
+    cmds:
+      - uv run alembic revision --autogenerate -m "{{.CLI_ARGS}}"
+    vars:
+      CLI_ARGS: '{{default "auto generated migration" .CLI_ARGS}}'
