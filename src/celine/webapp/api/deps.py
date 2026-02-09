@@ -1,4 +1,5 @@
-"""Authentication and user dependencies."""
+# celine/webapp/api/deps.py
+"""Authentication and service dependencies."""
 
 import json
 from typing import Annotated
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 from celine.webapp.settings import settings
 from celine.webapp.db import get_db, User as DBUser
 from celine.sdk.auth import JwtUser
+from celine.sdk.auth.static import StaticTokenProvider
+from celine.sdk.dt import DTClient
 
 
 def get_user_from_request(request: Request) -> JwtUser:
@@ -29,6 +32,35 @@ def get_user_from_request(request: Request) -> JwtUser:
 
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+
+
+def get_raw_token(request: Request) -> str:
+    """Extract the raw JWT string from the request header."""
+    token = request.headers.get(settings.jwt_header_name)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authentication token")
+    return token
+
+
+def get_dt_client(request: Request) -> DTClient:
+    """Create a DTClient that forwards the caller's JWT to the DT API.
+
+    The StaticTokenProvider wraps the user's existing JWT — no refresh,
+    no client-credentials. The upstream (oauth2_proxy) already validated it.
+    """
+    if not settings.digital_twin_api_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Digital Twin API not configured",
+        )
+
+    raw_token = get_raw_token(request)
+    token_provider = StaticTokenProvider(raw_token)
+
+    return DTClient(
+        base_url=settings.digital_twin_api_url,
+        token_provider=token_provider,
+    )
 
 
 async def ensure_user_exists(user: JwtUser, db: AsyncSession) -> DBUser:
@@ -66,3 +98,4 @@ def get_client_ip(request: Request) -> str:
 # Type aliases for dependency injection
 UserDep = Annotated[JwtUser, Depends(get_user_from_request)]
 DbDep = Annotated[AsyncSession, Depends(get_db)]
+DTDep = Annotated[DTClient, Depends(get_dt_client)]
