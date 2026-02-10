@@ -10,6 +10,10 @@ tasks:
     desc: Run FastAPI BFF with reload (development)
     cmds:
       - uv run uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
+  backend:debug:
+    desc: Run FastAPI BFF with reload (debug)
+    cmds:
+      - DEBUG_ATTACH=nowait DEBUG_PORT=4{{.PORT}} uv run uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
 
   frontend:
     desc: Run SvelteKit frontend

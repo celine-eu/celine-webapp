@@ -1,13 +1,13 @@
 # celine/webapp/api/overview.py
 """Overview and dashboard routes."""
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
+from celine.sdk.dt.community import DTApiError
 from fastapi import APIRouter
 
-from celine.webapp.api.deps import UserDep, DbDep, DTDep, ensure_user_exists
+from celine.webapp.api.deps import DbDep, DTDep, UserDep, ensure_user_exists
 from celine.webapp.api.schemas import OverviewResponse
-from celine.sdk.dt.community import DTApiError
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,14 @@ async def overview(
 
     try:
         participant_info = await dt.participants.info(participant_id)
+
+        print("participant_info", participant_info)
+
         # Try to get community membership from a value fetcher
         try:
             membership = await dt.participants.get_value(
-                participant_id, "communities",
+                participant_id,
+                "communities",
             )
             items = membership.get("items", [])
             if items:
@@ -80,9 +84,7 @@ async def overview(
                 "production_kwh": rec_prod,
                 "consumption_kwh": rec_cons,
                 "self_consumption_kwh": rec_self,
-                "self_consumption_rate": (
-                    rec_self / rec_cons if rec_cons > 0 else 0.0
-                ),
+                "self_consumption_rate": (rec_self / rec_cons if rec_cons > 0 else 0.0),
             }
 
             # Per-user KPIs (if present in balance)
@@ -115,12 +117,14 @@ async def overview(
         base = datetime.now(timezone.utc).date()
         for d in range(7):
             day = (base - timedelta(days=(6 - d))).isoformat()
-            trend.append({
-                "date": day,
-                "production_kwh": None,
-                "consumption_kwh": None,
-                "self_consumption_kwh": None,
-            })
+            trend.append(
+                {
+                    "date": day,
+                    "production_kwh": None,
+                    "consumption_kwh": None,
+                    "self_consumption_kwh": None,
+                }
+            )
 
     return OverviewResponse(
         period="Last 7 days",
