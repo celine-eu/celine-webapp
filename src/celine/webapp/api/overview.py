@@ -2,12 +2,16 @@
 """Overview and dashboard routes."""
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import TypeGuard, TypeVar
 
 from celine.sdk.dt.community import DTApiError
-from fastapi import APIRouter
+from celine.sdk.openapi.dt.types import Unset, UNSET
+
+from fastapi import APIRouter, HTTPException
 
 from celine.webapp.api.deps import DbDep, DTDep, UserDep, ensure_user_exists
 from celine.webapp.api.schemas import OverviewResponse
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,34 +32,18 @@ async def overview(
     participant_id = user.sub
     community_id: str | None = None
 
-    try:
-        participant_info = await dt.participants.info(participant_id)
+    participant = await dt.participants.profile(participant_id)
 
-        print("participant_info", participant_info)
+    if participant.membership is None or isinstance(participant.membership, Unset):
+        raise HTTPException(404, "User has no membership")
 
-        # Try to get community membership from a value fetcher
-        try:
-            membership = await dt.participants.get_value(
-                participant_id,
-                "communities",
-            )
-            items = membership.get("items", [])
-            if items:
-                community_id = items[0].get("community_id")
-        except DTApiError:
-            logger.debug(
-                "No 'communities' fetcher for participant %s, "
-                "checking profile fallback",
-                participant_id,
-            )
-            # Fallback: community_id might be in the profile
-            try:
-                profile = await dt.participants.profile(participant_id)
-                community_id = profile.get("community_id")
-            except DTApiError:
-                pass
-    except DTApiError as exc:
-        logger.warning("Failed to resolve participant %s: %s", participant_id, exc)
+    if participant.membership.member is None or isinstance(
+        participant.membership.member, Unset
+    ):
+        raise HTTPException(404, "User has no membership")
+
+    community_id = participant.membership.community.key
+    member_id = participant.membership.member.key
 
     # Fetch community energy balance
     user_data: dict = {
