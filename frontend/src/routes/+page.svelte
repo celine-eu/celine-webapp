@@ -1,11 +1,21 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { api, type Overview } from '$lib/api';
-  import { meStore } from '$lib/stores';
+  import { api, type Overview } from "$lib/api";
+  import { meStore } from "$lib/stores";
+  import { onMount } from "svelte";
 
   let overview: Overview | null = null;
-  let err = '';
+  let err = "";
   let loading = true;
+
+  /** Format a number to 1 decimal place, or return "—" for null/undefined */
+  function fmt(value: number | null | undefined): string {
+    return value != null ? value.toFixed(1) : "—";
+  }
+
+  /** Format a percentage (0-1 scale) to whole number with %, or return "—" for null */
+  function fmtPct(value: number | null | undefined): string {
+    return value != null ? `${(value * 100).toFixed(0)}%` : "—";
+  }
 
   onMount(async () => {
     try {
@@ -20,14 +30,17 @@
 
 <section class="block">
   <h1 class="title is-3">Overview</h1>
-  <p class="subtitle is-6">Your renewable energy community participation at a glance.</p>
+  <p class="subtitle is-6">
+    Your renewable energy community participation at a glance.
+  </p>
 
   {#if $meStore && !$meStore.has_smart_meter}
     <article class="message is-warning" role="status" aria-live="polite">
       <div class="message-body">
         <strong>No smart meter associated.</strong>
         Most features are unavailable.
-        <a class="has-text-weight-semibold" href="/no-smart-meter">Learn more</a>.
+        <a class="has-text-weight-semibold" href="/no-smart-meter">Learn more</a
+        >.
       </div>
     </article>
   {/if}
@@ -46,34 +59,31 @@
           <div class="columns is-multiline">
             <div class="column is-4">
               <p class="heading">Consumption</p>
-              <p class="title is-4">{overview.user.consumption_kwh.toFixed(1)} kWh</p>
+              <p class="title is-4">
+                {fmt(overview.user.consumption_kwh)} kWh
+              </p>
             </div>
             <div class="column is-4">
               <p class="heading">Production</p>
               <p class="title is-4">
-                {#if overview.user.production_kwh == null}
-                  —
-                {:else}
-                  {overview.user.production_kwh.toFixed(1)} kWh
-                {/if}
+                {fmt(overview.user.production_kwh)} kWh
               </p>
             </div>
             <div class="column is-4">
               <p class="heading">Self-consumption</p>
               <p class="title is-4">
-                {#if overview.user.self_consumption_kwh == null}
-                  —
-                {:else}
-                  {overview.user.self_consumption_kwh.toFixed(1)} kWh
-                {/if}
+                {fmt(overview.user.self_consumption_kwh)} kWh
               </p>
               {#if overview.user.self_consumption_rate != null}
-                <p class="has-text-grey">{(overview.user.self_consumption_rate * 100).toFixed(0)}%</p>
+                <p class="has-text-grey">
+                  {fmtPct(overview.user.self_consumption_rate)}
+                </p>
               {/if}
             </div>
           </div>
           <p class="has-text-grey is-size-7">
-            Values are illustrative until the Digital Twin integration is enabled.
+            Values are illustrative until the Digital Twin integration is
+            enabled.
           </p>
         </div>
       </div>
@@ -95,16 +105,17 @@
                 {#each overview.trend as row}
                   <tr>
                     <td>{row.date}</td>
-                    <td>{row.production_kwh.toFixed(1)}</td>
-                    <td>{row.consumption_kwh.toFixed(1)}</td>
-                    <td>{row.self_consumption_kwh.toFixed(1)}</td>
+                    <td>{fmt(row.production_kwh)}</td>
+                    <td>{fmt(row.consumption_kwh)}</td>
+                    <td>{fmt(row.self_consumption_kwh)}</td>
                   </tr>
                 {/each}
               </tbody>
             </table>
           </div>
           <p class="has-text-grey is-size-7">
-            Charting will be added with an accessible library once real data is available.
+            Charting will be added with an accessible library once real data is
+            available.
           </p>
         </div>
       </div>
@@ -115,19 +126,27 @@
           <div class="columns is-multiline">
             <div class="column is-3">
               <p class="heading">Production</p>
-              <p class="title is-5">{overview.rec.production_kwh.toFixed(1)} kWh</p>
+              <p class="title is-5">
+                {fmt(overview.rec.production_kwh)} kWh
+              </p>
             </div>
             <div class="column is-3">
               <p class="heading">Consumption</p>
-              <p class="title is-5">{overview.rec.consumption_kwh.toFixed(1)} kWh</p>
+              <p class="title is-5">
+                {fmt(overview.rec.consumption_kwh)} kWh
+              </p>
             </div>
             <div class="column is-3">
               <p class="heading">Self-consumption</p>
-              <p class="title is-5">{overview.rec.self_consumption_kwh.toFixed(1)} kWh</p>
+              <p class="title is-5">
+                {fmt(overview.rec.self_consumption_kwh)} kWh
+              </p>
             </div>
             <div class="column is-3">
               <p class="heading">Rate</p>
-              <p class="title is-5">{(overview.rec.self_consumption_rate * 100).toFixed(0)}%</p>
+              <p class="title is-5">
+                {fmtPct(overview.rec.self_consumption_rate)}
+              </p>
             </div>
           </div>
         </div>
