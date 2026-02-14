@@ -10,21 +10,32 @@ export type Me = {
   webpush_configured: boolean;
 };
 
+export type OverviewUser = {
+  production_kwh: number | null;
+  consumption_kwh: number | null;
+  self_consumption_kwh: number | null;
+  self_consumption_rate: number | null;
+};
+
+export type OverviewRec = {
+  production_kwh: number | null;
+  consumption_kwh: number | null;
+  self_consumption_kwh: number | null;
+  self_consumption_rate: number | null;
+};
+
+export type TrendItem = {
+  date: string;
+  production_kwh: number | null;
+  consumption_kwh: number | null;
+  self_consumption_kwh: number | null;
+};
+
 export type Overview = {
   period: string;
-  user: {
-    production_kwh?: number | null;
-    consumption_kwh: number;
-    self_consumption_kwh?: number | null;
-    self_consumption_rate?: number | null;
-  };
-  rec: {
-    production_kwh: number;
-    consumption_kwh: number;
-    self_consumption_kwh: number;
-    self_consumption_rate: number;
-  };
-  trend: Array<{ date: string; production_kwh: number; consumption_kwh: number; self_consumption_kwh: number }>;
+  user: OverviewUser;
+  rec: OverviewRec;
+  trend: TrendItem[];
 };
 
 export type NotificationItem = {
@@ -64,6 +75,10 @@ export const api = {
   me: () => j<Me>('/api/me'),
   overview: () => j<Overview>('/api/overview'),
   notifications: () => j<NotificationItem[]>('/api/notifications'),
+  notificationMarkRead: (id: string) => 
+    j<{ ok: true }>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  notificationMarkAllRead: () => 
+    j<{ ok: true }>('/api/notifications/read-all', { method: 'POST' }),
   acceptTerms: () => j<{ ok: true }>('/api/terms/accept', { method: 'POST', body: JSON.stringify({ accept: true }) }),
   settingsGet: () => j<Settings>('/api/settings'),
   settingsPut: (s: Settings) => j<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),

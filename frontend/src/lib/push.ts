@@ -33,19 +33,18 @@ export async function requestAndSubscribeWebPush(): Promise<{ subscribed: boolea
 
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(public_key)
+    applicationServerKey: urlBase64ToUint8Array(public_key),
   });
+
   await api.subscribeWebPush(sub.toJSON());
-  await api.enableNotifications();
   return { subscribed: true };
 }
 
-export async function unsubscribeWebPush(): Promise<{ ok: boolean }> {
+export async function unsubscribeWebPush(): Promise<void> {
   const reg = await ensureServiceWorker();
   const sub = await reg.pushManager.getSubscription();
-  if (!sub) return { ok: true };
-  const endpoint = sub.endpoint;
-  await sub.unsubscribe();
-  await api.unsubscribeWebPush(endpoint);
-  return { ok: true };
+  if (sub) {
+    await api.unsubscribeWebPush(sub.endpoint);
+    await sub.unsubscribe();
+  }
 }

@@ -5,6 +5,8 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || 'Open the app to see details.',
     data: data.data || {},
+    icon: '/icon-192.png',
+    badge: '/badge-72.png',
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
