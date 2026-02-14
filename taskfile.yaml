@@ -15,12 +15,6 @@ tasks:
     cmds:
       - DEBUG_ATTACH=nowait DEBUG_PORT=4{{.PORT}} uv run uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
 
-  frontend:
-    desc: Run SvelteKit frontend
-    dir: frontend
-    cmds:
-      - npm run dev
-
   migrate:
     desc: Run all pending database migrations
     cmds:
