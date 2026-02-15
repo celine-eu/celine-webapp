@@ -3,6 +3,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
+from celine.sdk.settings.models import OidcSettings
+
 
 class Settings(BaseSettings):
     """Application configuration."""
@@ -10,6 +12,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
+
+    oidc: OidcSettings = OidcSettings()
 
     # Server
     host: str = "0.0.0.0"
@@ -24,7 +28,7 @@ class Settings(BaseSettings):
     # Security
     policy_version: str = "2024-01-01"
     vapid_public_key: str = "BLMbGhB..."  # placeholder
-    jwt_header_name: str = "authorization"
+    jwt_header_name: str = "x-auth-request-access-token"
 
     # CORS
     cors_origins: list[str] = ["http://localhost:5173"]

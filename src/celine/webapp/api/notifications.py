@@ -1,15 +1,19 @@
 """Notification-related API routes."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 from fastapi import APIRouter, Request, HTTPException
 from sqlalchemy import select, desc, delete
 
-from celine.webapp.api.deps import UserDep, DbDep, ensure_user_exists
+from celine.webapp.api.deps import UserDep, DbDep
 from celine.webapp.api.schemas import (
     NotificationItem,
     VapidKeyResponse,
     WebPushUnsubscribeRequest,
     SuccessResponse,
 )
-from celine.webapp.db import Notification, WebPushSubscription
+from celine.webapp.db import WebPushSubscription
 from celine.webapp.settings import settings as app_settings
 
 
@@ -22,23 +26,39 @@ async def list_notifications(
     db: DbDep,
 ) -> list[NotificationItem]:
     """List user notifications."""
-    await ensure_user_exists(user, db)
-    
-    result = await db.execute(
-        select(Notification)
-        .filter(Notification.user_id == user.sub)
-        .order_by(desc(Notification.created_at))
-        .limit(50)
-    )
-    notifications = result.scalars().all()
-    
+
+    # TODO
+    @dataclass(frozen=True)
+    class TestNotification:
+        id: str
+        title: str
+        body: str
+        severity: str
+        created_at: datetime
+        read_at: datetime | None
+
+    notifications: list[TestNotification] = [
+        TestNotification(
+            id="0000001",
+            created_at=datetime.now(),
+            title="Welcome to the REC Webapp (example)",
+            body="Learn more about the app from your energy community manager",
+            severity="info",
+            read_at=None,
+        )
+    ]
+
     return [
         NotificationItem(
             id=n.id,
             created_at=n.created_at.isoformat(),
             title=n.title,
             body=n.body,
-            severity=n.severity,
+            severity=(
+                "critical"
+                if n.severity == "critical"
+                else "warning" if n.severity == "warning" else "info"
+            ),
             read_at=n.read_at.isoformat() if n.read_at else None,
         )
         for n in notifications
@@ -51,8 +71,7 @@ async def enable_notifications(
     db: DbDep,
 ) -> SuccessResponse:
     """Enable notifications for user."""
-    await ensure_user_exists(user, db)
-    
+
     # Idempotent placeholder: in a real implementation this might
     # register the user in the nudging tool
     return SuccessResponse()
@@ -64,7 +83,6 @@ async def vapid_public_key(
     db: DbDep,
 ) -> VapidKeyResponse:
     """Get VAPID public key for web push."""
-    await ensure_user_exists(user, db)
     return VapidKeyResponse(public_key=app_settings.vapid_public_key)
 
 
@@ -75,27 +93,22 @@ async def webpush_subscribe(
     db: DbDep,
 ) -> SuccessResponse:
     """Subscribe to web push notifications."""
-    await ensure_user_exists(user, db)
-    
+
     data = await request.json()
     endpoint = data.get("endpoint")
-    
+
     if not endpoint:
-        raise HTTPException(
-            status_code=400, 
-            detail="subscription endpoint missing"
-        )
-    
+        raise HTTPException(status_code=400, detail="subscription endpoint missing")
+
     # Check if subscription already exists
     result = await db.execute(
-        select(WebPushSubscription)
-        .filter(
+        select(WebPushSubscription).filter(
             WebPushSubscription.user_id == user.sub,
             WebPushSubscription.endpoint == endpoint,
         )
     )
     existing = result.scalar_one_or_none()
-    
+
     if existing:
         # Update existing subscription
         existing.subscription_json = data
@@ -109,7 +122,7 @@ async def webpush_subscribe(
         )
         db.add(subscription)
         await db.commit()
-    
+
     return SuccessResponse()
 
 
@@ -120,15 +133,13 @@ async def webpush_unsubscribe(
     db: DbDep,
 ) -> SuccessResponse:
     """Unsubscribe from web push notifications."""
-    await ensure_user_exists(user, db)
-    
+
     await db.execute(
-        delete(WebPushSubscription)
-        .filter(
+        delete(WebPushSubscription).filter(
             WebPushSubscription.user_id == user.sub,
             WebPushSubscription.endpoint == body.endpoint,
         )
     )
     await db.commit()
-    
+
     return SuccessResponse()

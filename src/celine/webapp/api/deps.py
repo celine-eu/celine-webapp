@@ -1,15 +1,12 @@
 # celine/webapp/api/deps.py
 """Authentication and service dependencies."""
 
-import json
 from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pydantic import BaseModel
 
 from celine.webapp.settings import settings
-from celine.webapp.db import get_db, User as DBUser
+from celine.webapp.db import get_db
 from celine.sdk.auth import JwtUser
 from celine.sdk.auth.static import StaticTokenProvider
 from celine.sdk.dt import DTClient
@@ -27,7 +24,7 @@ def get_user_from_request(request: Request) -> JwtUser:
 
     try:
         # Use SDK to parse JWT (no verification - oauth2_proxy already verified)
-        user = JwtUser.from_token(token, verify=False)
+        user = JwtUser.from_token(token, oidc=settings.oidc)
         return user
 
     except Exception as e:
@@ -61,27 +58,6 @@ def get_dt_client(request: Request) -> DTClient:
         base_url=settings.digital_twin_api_url,
         token_provider=token_provider,
     )
-
-
-async def ensure_user_exists(user: JwtUser, db: AsyncSession) -> DBUser:
-    """
-    Ensure user exists in database, create if not.
-    Returns the database user object.
-    """
-    result = await db.execute(select(DBUser).filter(DBUser.sub == user.sub))
-    db_user = result.scalar_one_or_none()
-
-    if not db_user:
-        db_user = DBUser(
-            sub=user.sub,
-            email=user.email,
-            name=user.name,
-        )
-        db.add(db_user)
-        await db.commit()
-        await db.refresh(db_user)
-
-    return db_user
 
 
 def get_client_ip(request: Request) -> str:

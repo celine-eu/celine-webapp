@@ -9,7 +9,7 @@ from celine.sdk.openapi.dt.types import Unset, UNSET
 
 from fastapi import APIRouter, HTTPException
 
-from celine.webapp.api.deps import DbDep, DTDep, UserDep, ensure_user_exists
+from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import OverviewResponse
 
 
@@ -52,12 +52,11 @@ async def overview(
     - User's meter data from participant domain (meters_data value fetcher)
     - REC-level self-consumption from community domain (rec_self_consumption value fetcher)
     """
-    db_user = await ensure_user_exists(user, db)
 
     # Resolve participant's community.
     participant_id = user.sub
     community_id: str | None = None
-    device_id: str | None = None
+    device_ids: list[str] = []
 
     participant = await dt.participants.profile(participant_id)
 
@@ -72,11 +71,21 @@ async def overview(
     community_id = participant.membership.community.key
     member_id = participant.membership.member.key
 
-    # Get device_id from participant's delivery points or assets
-    # This assumes the member has meter information in their profile
-    delivery_points = getattr(participant.membership.member, "delivery_points", None)
-    if delivery_points and len(delivery_points) > 0:
-        device_id = delivery_points[0].meter_id  # or appropriate field
+    try:
+        assets = await dt.participants.assets(participant_id)
+        if assets:
+            for asset in assets.items:
+                if asset.sensor_id:
+                    device_ids.append(asset.sensor_id)
+        # Get device_id from participant's delivery points or assets
+        # This assumes the member has meter information in their profile
+        delivery_points = getattr(
+            participant.membership.member, "delivery_points", None
+        )
+        if delivery_points and len(delivery_points) > 0:
+            device_ids = delivery_points[0].meter_id  # or appropriate field
+    except Exception as ex:
+        logger.warning(f"Failed to fetch devices for {user.sub}")
 
     # Initialize response data
     user_data: dict = {
@@ -101,8 +110,11 @@ async def overview(
     # -------------------------------------------------------------------------
     # Fetch user meter data (last 12 hours) using the meters_data value fetcher
     # -------------------------------------------------------------------------
-    if device_id:
+    if len(device_ids) > 0:
         try:
+            # TODO
+            device_id = device_ids[0]
+
             # POST /participants/{participant_id}/values/meters_data
             meters_response = await dt.participants.fetch_values(
                 participant_id=participant_id,
@@ -140,11 +152,11 @@ async def overview(
                     ),
                 }
 
-        except DTApiError as exc:
+        except Exception as exc:
             logger.warning(
                 "Failed to fetch meter data for participant %s (device %s): %s",
                 participant_id,
-                device_id,
+                device_ids,
                 exc,
             )
 
@@ -192,7 +204,7 @@ async def overview(
                     [item.to_dict() for item in items], seven_days_ago, now
                 )
 
-        except DTApiError as exc:
+        except Exception as exc:
             logger.warning(
                 "Failed to fetch REC self-consumption for community %s: %s",
                 community_id,

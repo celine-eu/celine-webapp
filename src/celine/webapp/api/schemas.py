@@ -1,4 +1,5 @@
 """Pydantic schemas for API requests and responses."""
+
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
@@ -6,6 +7,7 @@ from typing import Literal, Optional
 # User schemas
 class UserBase(BaseModel):
     """Base user schema."""
+
     sub: str
     email: str
     name: str
@@ -13,8 +15,9 @@ class UserBase(BaseModel):
 
 class UserInDB(UserBase):
     """User in database."""
+
     id: int
-    
+
     class Config:
         from_attributes = True
 
@@ -22,8 +25,8 @@ class UserInDB(UserBase):
 # Me endpoint
 class MeResponse(BaseModel):
     """Response for /api/me endpoint."""
+
     user: dict
-    has_smart_meter: bool
     terms_required: bool
     policy_version: str
     accepted_policy_version: Optional[str] = None
@@ -36,12 +39,14 @@ class MeResponse(BaseModel):
 # Terms
 class AcceptTermsRequest(BaseModel):
     """Request to accept terms."""
+
     accept: bool = True
 
 
 # Overview
 class OverviewResponse(BaseModel):
     """Response for overview endpoint."""
+
     period: str
     user: dict
     rec: dict
@@ -51,6 +56,7 @@ class OverviewResponse(BaseModel):
 # Notifications
 class NotificationItem(BaseModel):
     """Notification item."""
+
     id: str
     created_at: str
     title: str
@@ -62,6 +68,7 @@ class NotificationItem(BaseModel):
 # Settings
 class SettingsModel(BaseModel):
     """User settings model."""
+
     simple_mode: bool = False
     font_scale: float = Field(default=1.0, ge=0.9, le=1.3)
     notifications: dict = Field(default_factory=lambda: {"email_enabled": False})
@@ -70,15 +77,18 @@ class SettingsModel(BaseModel):
 # WebPush
 class WebPushUnsubscribeRequest(BaseModel):
     """Request to unsubscribe from web push."""
+
     endpoint: str
 
 
 class VapidKeyResponse(BaseModel):
     """VAPID public key response."""
+
     public_key: str
 
 
 # Generic responses
 class SuccessResponse(BaseModel):
     """Generic success response."""
+
     ok: bool = True
