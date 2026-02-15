@@ -51,6 +51,7 @@ class OverviewResponse(BaseModel):
     user: dict
     rec: dict
     trend: list[dict]
+    devices: list[dict]
 
 
 # Notifications

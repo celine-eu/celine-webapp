@@ -71,11 +71,20 @@ async def overview(
     community_id = participant.membership.community.key
     member_id = participant.membership.member.key
 
+    devices: list[dict] = []
     try:
         assets = await dt.participants.assets(participant_id)
         if assets:
             for asset in assets.items:
                 if asset.sensor_id:
+                    devices.append(
+                        {
+                            "sensor_id": asset.sensor_id,
+                            "key": asset.key,
+                            "name": asset.name,
+                            "details": asset.device.to_dict() if asset.device else {},
+                        }
+                    )
                     device_ids.append(asset.sensor_id)
         # Get device_id from participant's delivery points or assets
         # This assumes the member has meter information in their profile
@@ -230,6 +239,7 @@ async def overview(
         user=user_data,
         rec=rec_data,
         trend=trend,
+        devices=devices,
     )
 
 
