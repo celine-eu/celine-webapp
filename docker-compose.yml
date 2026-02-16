@@ -1,0 +1,12 @@
+services:
+  api:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8014:8014"
+    extra_hosts:
+      - "keycloak.celine.localhost:172.17.0.1"
+      - "api.celine.localhost:172.17.0.1"

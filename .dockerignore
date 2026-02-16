@@ -1,0 +1,11 @@
+data
+.env
+__pycache__
+.venv
+.dumpster
+*.egg-info
+.git
+.venv
+Dockerfile
+.dockerfile
+docker-compose.*
