@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # Security
     policy_version: str = "2024-01-01"
-    vapid_public_key: str = "BLMbGhB..."  # placeholder
     jwt_header_name: str = "x-auth-request-access-token"
 
     # CORS
@@ -36,6 +35,7 @@ class Settings(BaseSettings):
     # Optional overrides
     smart_meter_api_url: Optional[str] = None
     digital_twin_api_url: Optional[str] = "http://api.celine.localhost/dt"
+    nudging_api_url: Optional[str] = "http://api.celine.localhost/nudging"
 
 
 # Global settings instance

@@ -14,7 +14,6 @@ from celine.webapp.api.schemas import (
 from celine.webapp.db import (
     PolicyAcceptance,
     Settings,
-    WebPushSubscription,
 )
 from celine.webapp.settings import settings as app_settings
 
@@ -62,14 +61,6 @@ async def get_user_settings(user_id: str, db: AsyncSession) -> Settings:
     return settings_obj
 
 
-async def webpush_configured(user_id: str, db: AsyncSession) -> bool:
-    """Check if user has web push configured."""
-    result = await db.execute(
-        select(WebPushSubscription).filter(WebPushSubscription.user_id == user_id)
-    )
-    return result.scalar_one_or_none() is not None
-
-
 @router.get("/me", response_model=MeResponse)
 async def me(
     request: Request,
@@ -97,7 +88,7 @@ async def me(
         simple_mode=settings.simple_mode,
         font_scale=settings.font_scale,
         notification_permission=notification_permission,
-        webpush_configured=await webpush_configured(user.sub, db),
+        webpush_configured=settings.webpush_enabled,
     )
 
 

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from celine.webapp.api.deps import UserDep, DbDep
 from celine.webapp.api.schemas import SettingsModel
 from celine.webapp.db import Settings
-
+from celine.webapp.db.user_settings import load_user_settings, update_user_settings
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -17,21 +17,7 @@ async def get_settings(
     db: DbDep,
 ) -> SettingsModel:
     """Get user settings."""
-
-    result = await db.execute(select(Settings).filter(Settings.user_id == user.sub))
-    settings = result.scalar_one_or_none()
-
-    if not settings:
-        settings = Settings(
-            user_id=user.sub,
-            simple_mode=False,
-            font_scale=1.0,
-            email_notifications=False,
-        )
-        db.add(settings)
-        await db.commit()
-        await db.refresh(settings)
-
+    settings = await load_user_settings(user.sub, db)
     return SettingsModel(
         simple_mode=settings.simple_mode,
         font_scale=settings.font_scale,
@@ -50,18 +36,13 @@ async def update_settings(
     data = await request.json()
     model = SettingsModel.model_validate(data)
 
-    result = await db.execute(select(Settings).filter(Settings.user_id == user.sub))
-    settings = result.scalar_one_or_none()
-
-    if not settings:
-        settings = Settings(user_id=user.sub)
-        db.add(settings)
-
-    settings.simple_mode = model.simple_mode
-    settings.font_scale = model.font_scale
-    settings.email_notifications = bool(model.notifications.get("email_enabled"))
-
-    await db.commit()
-    await db.refresh(settings)
+    await update_user_settings(
+        user_id=user.sub,
+        db=db,
+        simple_mode=model.simple_mode,
+        font_scale=model.font_scale,
+        email_notifications=bool(model.notifications.get("email_enabled")),
+        webpush_enabled=bool(model.notifications.get("webpush_enabled")),
+    )
 
     return model

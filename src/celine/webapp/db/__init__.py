@@ -4,7 +4,6 @@ from celine.webapp.db.models import (
     Base,
     PolicyAcceptance,
     Settings,
-    WebPushSubscription,
 )
 from celine.webapp.db.session import (
     async_engine,
@@ -20,7 +19,6 @@ __all__ = [
     "Base",
     "PolicyAcceptance",
     "Settings",
-    "WebPushSubscription",
     # Session
     "async_engine",
     "sync_engine",

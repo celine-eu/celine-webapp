@@ -64,6 +64,7 @@ class NotificationItem(BaseModel):
     body: str
     severity: Literal["info", "warning", "critical"]
     read_at: Optional[str] = None
+    deleted_at: Optional[str] = None
 
 
 # Settings
@@ -72,7 +73,12 @@ class SettingsModel(BaseModel):
 
     simple_mode: bool = False
     font_scale: float = Field(default=1.0, ge=0.9, le=1.3)
-    notifications: dict = Field(default_factory=lambda: {"email_enabled": False})
+    notifications: dict = Field(
+        default_factory=lambda: {
+            "email_enabled": False,
+            "webpush_enabled": False,
+        }
+    )
 
 
 # WebPush
@@ -93,3 +99,16 @@ class SuccessResponse(BaseModel):
     """Generic success response."""
 
     ok: bool = True
+
+
+class PushSubscriptionPayload(BaseModel):
+    """What the browser sends after navigator.serviceWorker.pushManager.subscribe()"""
+
+    endpoint: str
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionUnsubscribePayload(BaseModel):
+
+    endpoint: str

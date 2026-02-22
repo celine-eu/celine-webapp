@@ -49,6 +49,9 @@ def upgrade() -> None:
             "email_notifications", sa.Boolean(), nullable=False, server_default="false"
         ),
         sa.Column(
+            "webpush_enabled", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),

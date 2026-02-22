@@ -6,14 +6,15 @@ vars:
   PORT: 8014
 
 tasks:
-  backend:
+  run:
     desc: Run FastAPI BFF with reload (development)
     cmds:
-      - uv run uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
-  backend:debug:
+      - .venv/bin/uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
+
+  debug:
     desc: Run FastAPI BFF with reload (debug)
     cmds:
-      - DEBUG_ATTACH=nowait DEBUG_PORT=4{{.PORT}} uv run uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
+      - DEBUG_ATTACH=nowait DEBUG_PORT=4{{.PORT}} .venv/bin/uvicorn {{.APP_MODULE}} --host {{.HOST}} --port {{.PORT}} --reload
 
   migrate:
     desc: Run all pending database migrations
