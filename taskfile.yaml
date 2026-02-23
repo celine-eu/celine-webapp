@@ -6,6 +6,11 @@ vars:
   PORT: 8014
 
 tasks:
+  setup:
+    desc: Setup environment
+    cmds:
+      - uv sync
+
   run:
     desc: Run FastAPI BFF with reload (development)
     cmds:
