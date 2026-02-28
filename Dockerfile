@@ -41,6 +41,9 @@ RUN apt-get update \
 COPY --from=python-builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --from=python-builder --chown=appuser:appuser /app/src /app/src
 
+COPY ./alembic /app/alembic
+COPY ./alembic.ini /app/alembic.ini
+
 USER appuser
 
 EXPOSE 8014
