@@ -6,23 +6,22 @@ extensions:
   - .json
   - .yaml
   - .toml
-  - .svelte
-  - .ts
-  - .js
-  - .html
 
 dumps:
   - name: all
     contents:
       - src
-      - frontend
       - tests
+      - alembic
       - README.md
       - pyproject.toml
+      - Dockerfile
+      - docker-compose.yaml
 
   - name: backend
     contents:
       - src
       - tests
+      - alembic
       - README.md
       - pyproject.toml

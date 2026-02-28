@@ -1,29 +1,55 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+
+# ── Stage 1: Python dependency install ────────────────────────────────────────
+FROM python:3.12-slim AS python-builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    UV_SYSTEM_PYTHON=1
+    UV_SYSTEM_PYTHON=0 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
-# Install OS deps (build tools not strictly required for this set, keep lean)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH=".venv/bin:/root/.local/bin:${PATH}"
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy dependency manifests first for better caching
 COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --no-editable --no-dev --no-install-project
 
-# Copy application code
-COPY ./src ./src
+COPY src/ ./src/
+RUN uv sync --no-editable --no-dev
 
-# Install deps (no dev deps declared; adjust if you add optional groups)
-RUN uv sync --no-editable
+# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:${PATH}"
+
+WORKDIR /app
+
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid 1000 --no-create-home --shell /sbin/nologin appuser
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=python-builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --from=python-builder --chown=appuser:appuser /app/src /app/src
+
+USER appuser
 
 EXPOSE 8014
-CMD [ ".venv/bin/uvicorn","celine.webapp.main:create_app","--host","0.0.0.0","--port","8014" ]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8014/health')" \
+    || exit 1
+
+CMD ["uvicorn", "celine.webapp.main:create_app", \
+    "--host", "0.0.0.0", \
+    "--port", "8014", \
+    "--factory"]
