@@ -32,3 +32,9 @@ tasks:
       - uv run alembic revision --autogenerate -m "{{.CLI_ARGS}}"
     vars:
       CLI_ARGS: '{{default "auto generated migration" .CLI_ARGS}}'
+
+  release:
+    cmds:
+      - uv run semantic-release -v version --no-vcs-release
+      - git push
+      - git push --tags
