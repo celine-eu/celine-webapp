@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-03-02)
+
+### Bug Fixes
+
+- Add readme ref
+  ([`73e45d6`](https://github.com/celine-eu/celine-webapp/commit/73e45d6ec28c9061a9a75358707181d48c1409c4))
+
+
 ## v1.0.1 (2026-02-28)
 
 ### Bug Fixes
