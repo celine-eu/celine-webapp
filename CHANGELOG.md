@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.3 (2026-03-03)
+
+### Bug Fixes
+
+- Handle 401 and participant not found
+  ([`8f5c4b5`](https://github.com/celine-eu/celine-webapp/commit/8f5c4b5e5a0870d3702a4229ca7920c8580c5ebf))
+
+
 ## v1.0.2 (2026-03-02)
 
 ### Bug Fixes
