@@ -58,7 +58,12 @@ async def overview(
     community_id: str | None = None
     device_ids: list[str] = []
 
-    participant = await dt.participants.profile(participant_id)
+    try:
+        participant = await dt.participants.profile(participant_id)
+    except DTApiError as e:
+        if e.status_code == 404:
+            raise HTTPException(status_code=404, detail="not_a_participant")
+        raise
 
     if participant.membership is None or isinstance(participant.membership, Unset):
         raise HTTPException(404, "User has no membership")

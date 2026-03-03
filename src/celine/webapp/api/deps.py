@@ -4,6 +4,7 @@
 from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+import jwt as pyjwt
 
 from celine.webapp.settings import settings
 from celine.webapp.db import get_db
@@ -17,19 +18,22 @@ def get_user_from_request(request: Request) -> JwtUser:
     """
     Extract and validate user from JWT in request header using celine-sdk.
 
-    The SDK handles JWT parsing and claim extraction.
+    The SDK handles JWT parsing, signature verification, and expiry checks.
     """
     token = request.headers.get(settings.jwt_header_name)
     if not token:
         raise HTTPException(status_code=401, detail="Missing authentication token")
 
     try:
-        # Use SDK to parse JWT (no verification - oauth2_proxy already verified)
         user = JwtUser.from_token(token, oidc=settings.oidc)
         return user
 
-    except Exception as e:
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except pyjwt.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
 
 def get_raw_token(request: Request) -> str:
