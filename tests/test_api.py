@@ -45,6 +45,7 @@ def test_get_settings(client: TestClient, auth_headers: dict):
     assert "simple_mode" in data
     assert "font_scale" in data
     assert "notifications" in data
+    assert data["notifications"]["limit"] == 5
 
 
 def test_update_settings(client: TestClient, auth_headers: dict):
@@ -52,7 +53,7 @@ def test_update_settings(client: TestClient, auth_headers: dict):
     new_settings = {
         "simple_mode": True,
         "font_scale": 1.2,
-        "notifications": {"email_enabled": True}
+        "notifications": {"email_enabled": True, "limit": 8}
     }
     
     response = client.put(
@@ -66,6 +67,7 @@ def test_update_settings(client: TestClient, auth_headers: dict):
     assert data["simple_mode"] is True
     assert data["font_scale"] == 1.2
     assert data["notifications"]["email_enabled"] is True
+    assert data["notifications"]["limit"] == 8
 
 
 def test_overview_endpoint(client: TestClient, auth_headers: dict):

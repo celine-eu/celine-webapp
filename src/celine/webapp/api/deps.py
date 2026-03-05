@@ -2,6 +2,7 @@
 """Authentication and service dependencies."""
 
 from typing import Annotated
+import logging
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt as pyjwt
@@ -13,6 +14,33 @@ from celine.sdk.auth.static import StaticTokenProvider
 from celine.sdk.dt import DTClient
 from celine.sdk.nudging.client import NudgingClient
 
+logger = logging.getLogger(__name__)
+
+
+def _extract_token(request: Request) -> str | None:
+    """Read the caller JWT from the oauth2-proxy header or Authorization."""
+    token = request.headers.get(settings.jwt_header_name)
+    if token:
+        return token
+
+    authorization = request.headers.get("authorization")
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+
+    logger.warning(
+        "Missing auth headers on %s %s; available=%s",
+        request.method,
+        request.url.path,
+        {
+            "authorization": bool(request.headers.get("authorization")),
+            settings.jwt_header_name: bool(request.headers.get(settings.jwt_header_name)),
+            "x-auth-request-user": bool(request.headers.get("x-auth-request-user")),
+            "x-auth-request-email": bool(request.headers.get("x-auth-request-email")),
+        },
+    )
+
+    return None
+
 
 def get_user_from_request(request: Request) -> JwtUser:
     """
@@ -20,7 +48,7 @@ def get_user_from_request(request: Request) -> JwtUser:
 
     The SDK handles JWT parsing, signature verification, and expiry checks.
     """
-    token = request.headers.get(settings.jwt_header_name)
+    token = _extract_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Missing authentication token")
 
@@ -38,7 +66,7 @@ def get_user_from_request(request: Request) -> JwtUser:
 
 def get_raw_token(request: Request) -> str:
     """Extract the raw JWT string from the request header."""
-    token = request.headers.get(settings.jwt_header_name)
+    token = _extract_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Missing authentication token")
     return token
