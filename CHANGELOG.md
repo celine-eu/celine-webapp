@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.5 (2026-03-06)
+
+### Bug Fixes
+
+- Correct numbers
+  ([`96be54f`](https://github.com/celine-eu/celine-webapp/commit/96be54f2b4399809ea4809b65cd0b9ed4b59552d))
+
+
 ## v1.0.4 (2026-03-06)
 
 ### Bug Fixes
