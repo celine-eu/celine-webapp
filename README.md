@@ -2,6 +2,7 @@
 
 This is a scaffold for a renewable energy community participant webapp.
 
+
 ## Structure
 - `frontend/` SvelteKit 2 / Svelte 5 + Bulma UI
 - `src/celine/webapp/` FastAPI backend-for-frontend (BFF)
