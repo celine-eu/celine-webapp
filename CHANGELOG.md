@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.4 (2026-03-06)
+
+### Bug Fixes
+
+- Release
+  ([`4d494d3`](https://github.com/celine-eu/celine-webapp/commit/4d494d380abf04a2c52affc6a696fd6ae4feead6))
+
+
 ## v1.0.3 (2026-03-03)
 
 ### Bug Fixes
