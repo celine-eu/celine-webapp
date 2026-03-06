@@ -149,20 +149,24 @@ async def overview(
                 total_production = sum(
                     _safe_float(r.to_dict().get("production_kw")) for r in items
                 )
-                total_self_consumed = sum(
-                    _safe_float(r.to_dict().get("self_consumed_kw")) for r in items
-                )
 
                 # Convert from kW readings (15-min intervals) to kWh
                 # Each reading is 15 minutes = 0.25 hours
                 interval_hours = 0.25
+                production_kwh = total_production * interval_hours
+                consumption_kwh = total_consumption * interval_hours
+                # Self-consumption = energy from own production used locally.
+                # self_consumed_kw from the meter uses a sign convention that
+                # doesn't match (returns negative values equal to -production).
+                # Use the physically correct formula instead: min(P, C).
+                self_consumption_kwh = min(production_kwh, consumption_kwh)
                 user_data = {
-                    "production_kwh": total_production * interval_hours,
-                    "consumption_kwh": total_consumption * interval_hours,
-                    "self_consumption_kwh": total_self_consumed * interval_hours,
+                    "production_kwh": production_kwh,
+                    "consumption_kwh": consumption_kwh,
+                    "self_consumption_kwh": self_consumption_kwh,
                     "self_consumption_rate": _compute_self_consumption_rate(
-                        total_self_consumed * interval_hours,
-                        total_consumption * interval_hours,
+                        self_consumption_kwh,
+                        consumption_kwh,
                     ),
                 }
 
