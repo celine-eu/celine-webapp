@@ -1,6 +1,8 @@
 """Pydantic schemas for API requests and responses."""
 
+import re
 from pydantic import BaseModel, Field
+from pydantic import model_validator
 from typing import Literal, Optional
 
 
@@ -68,16 +70,36 @@ class NotificationItem(BaseModel):
 
 
 # Settings
+class NotificationSettingsModel(BaseModel):
+    """Notification settings."""
+
+    email_enabled: bool = False
+    email: str = ""
+    webpush_enabled: bool = False
+    limit: int = Field(default=5, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_email_notifications(self) -> "NotificationSettingsModel":
+        if not self.email_enabled:
+            return self
+
+        email = (self.email or "").strip()
+        if not email:
+            raise ValueError("Email address is required when email notifications are enabled")
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            raise ValueError("Email address format is invalid")
+        self.email = email
+        return self
+
+
+# Settings
 class SettingsModel(BaseModel):
     """User settings model."""
 
     simple_mode: bool = False
     font_scale: float = Field(default=1.0, ge=0.9, le=1.3)
-    notifications: dict = Field(
-        default_factory=lambda: {
-            "email_enabled": False,
-            "webpush_enabled": False,
-        }
+    notifications: NotificationSettingsModel = Field(
+        default_factory=NotificationSettingsModel
     )
 
 

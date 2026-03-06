@@ -6,6 +6,31 @@ from sqlalchemy.orm import sessionmaker
 
 from celine.webapp.main import create_app
 from celine.webapp.db import Base, get_db
+from celine.webapp.api.deps import get_nudging_client
+
+
+class FakeNudgingClient:
+    def __init__(self):
+        self.max_per_day = 5
+
+    async def get_preferences(self, *, token=None):
+        class Pref:
+            def __init__(self, max_per_day: int):
+                self.max_per_day = max_per_day
+
+        return Pref(self.max_per_day)
+
+    async def update_preferences(self, max_per_day: int, *, token=None):
+        self.max_per_day = max_per_day
+
+        class Pref:
+            def __init__(self, max_per_day: int):
+                self.max_per_day = max_per_day
+
+        return Pref(self.max_per_day)
+
+    async def list_notifications(self, *, limit=50, offset=0, unread_only=False, token=None):
+        return []
 
 
 # Test database URL - use in-memory SQLite for tests
@@ -40,14 +65,20 @@ def db_session(db_engine):
 @pytest.fixture(scope="function")
 def client(db_session):
     """Create a test client with database override."""
+    fake_nudging = FakeNudgingClient()
+
     def override_get_db():
         try:
             yield db_session
         finally:
             pass
+
+    def override_get_nudging_client():
+        return fake_nudging
     
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_nudging_client] = override_get_nudging_client
     
     with TestClient(app) as test_client:
         yield test_client
