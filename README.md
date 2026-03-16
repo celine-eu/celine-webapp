@@ -1,6 +1,8 @@
-# celine-webapp
+# CELINE Participant Webapp API
 
-REC participant webapp — SvelteKit 2 / Svelte 5 frontend with a FastAPI Backend-for-Frontend (BFF). Deployed same-origin behind oauth2_proxy.
+FastAPI Backend-for-Frontend (BFF) for the CELINE REC participant webapp. Deployed same-origin behind oauth2_proxy.
+
+The participant frontend (SvelteKit) is maintained separately in [celine-frontend](https://github.com/celine-eu/celine-frontend) (`apps/webapp`).
 
 ## Architecture
 
@@ -12,21 +14,14 @@ The webapp uses the BFF pattern:
 
 ## Quick Start
 
-**Backend (BFF):**
 ```bash
+uv sync
+uv run alembic upgrade head
 uv run -m celine.webapp.main
 # Listens on http://localhost:8000
 ```
 
-**Frontend:**
-```bash
-cd frontend
-pnpm install
-pnpm dev
-# Listens on http://localhost:5173
-```
-
-For local development, proxy `/api` to the backend via Vite config or a local reverse proxy.
+For the participant frontend, see [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`.
 
 ## Features
 

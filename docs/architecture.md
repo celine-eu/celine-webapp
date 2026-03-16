@@ -11,24 +11,16 @@ Benefits:
 
 ## Deployment Model
 
-```
-Browser
-  |
-  v
-Caddy (reverse proxy + TLS)
-  |
-  v
-oauth2_proxy  <-->  Keycloak (OIDC)
-  |
-  v
-celine-webapp (SvelteKit + FastAPI BFF, same origin)
-  |
-  +-->  digital-twin service
-  +-->  nudging-tool service
-  +-->  celine-ai-assistant service
-```
+Requests from the browser pass through Caddy (TLS termination) → oauth2_proxy (OIDC authentication against Keycloak) → the BFF. The BFF then forwards authenticated requests to internal services (digital-twin, nudging-tool, celine-ai-assistant).
 
-The entire webapp (frontend + BFF) is deployed as a single container. Caddy routes `/*` through oauth2_proxy before forwarding to the webapp.
+| Layer | Component | Role |
+|---|---|---|
+| Ingress | Caddy | TLS termination, reverse proxy |
+| Auth | oauth2_proxy | OIDC login with Keycloak, JWT injection |
+| Application | FastAPI BFF | Request handling, service aggregation |
+| Backend services | digital-twin, nudging-tool, celine-ai-assistant | Domain data |
+
+The BFF is deployed as a standalone container. The participant frontend is served from [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`.
 
 ## JWT Flow
 
@@ -47,23 +39,6 @@ The entire webapp (frontend + BFF) is deployed as a single container. Caddy rout
 | **celine-ai-assistant** | Embedded chat assistant (proxied) |
 | **Keycloak** | Identity provider (via oauth2_proxy) |
 
-## Frontend Structure
+## Frontend
 
-```
-frontend/src/
-  routes/
-    +layout.svelte       # App shell — terms acceptance check via /api/me
-    +page.svelte         # Overview (energy chart, stat cards)
-    assistant/
-      +page.svelte       # Embedded ChatCore
-    notifications/
-      +page.svelte       # Notification list
-    settings/
-      +page.svelte       # User settings
-  lib/
-    api.ts               # Typed BFF API client
-    stores.ts            # Svelte stores
-    components/
-      EnergyChart.svelte
-      StatCard.svelte
-```
+This repository is a pure API backend. The participant frontend (SvelteKit) is maintained separately in [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`. The frontend communicates exclusively with this BFF at `/api/*`.

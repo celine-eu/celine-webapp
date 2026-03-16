@@ -3,7 +3,6 @@
 ## Prerequisites
 
 - Python ≥ 3.11 and `uv`
-- Node.js ≥ 20 and `pnpm`
 - A running PostgreSQL instance
 
 ## Environment Variables
@@ -30,29 +29,9 @@ uv run -m celine.webapp.main
 # Listens on http://localhost:8000
 ```
 
-## Frontend Setup
+## Frontend
 
-```bash
-cd frontend
-pnpm install
-pnpm dev
-# Listens on http://localhost:5173
-```
-
-## Local Proxy Configuration
-
-For local development, the frontend at `localhost:5173` needs to proxy `/api` requests to the BFF at `localhost:8000`. Configure Vite:
-
-```javascript
-// frontend/vite.config.js
-export default {
-  server: {
-    proxy: {
-      '/api': 'http://localhost:8000',
-    }
-  }
-}
-```
+The participant frontend is in [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`. See that repository for frontend setup instructions.
 
 ## JWT Simulation
 
@@ -79,9 +58,4 @@ uv run alembic revision --autogenerate -m "add preference column"
 
 ```bash
 uv run pytest -q
-```
-
-Frontend tests:
-```bash
-cd frontend && pnpm test
 ```
