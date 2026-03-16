@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Database - using asyncpg driver for async support
     database_url: str = (
-        "postgresql+asyncpg://postgres:securepassword123@172.17.0.1:15432/celine_webapp"
+        "postgresql+asyncpg://postgres:securepassword123@host.docker.internal:15432/celine_webapp"
     )
     database_echo: bool = False
 
