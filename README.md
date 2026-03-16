@@ -38,10 +38,10 @@ For the participant frontend, see [celine-frontend](https://github.com/celine-eu
 
 | Document | Description |
 |---|---|
-| [Architecture](https://celine-eu.github.io/projects/celine-webapp/docs/architecture.md) | BFF pattern, JWT flow, service dependencies, deployment model |
-| [API Reference](https://celine-eu.github.io/projects/celine-webapp/docs/api-reference.md) | All BFF endpoints: user, overview, notifications, settings |
-| [Features](https://celine-eu.github.io/projects/celine-webapp/docs/features.md) | Terms acceptance, web push, digital twin integration |
-| [Development](https://celine-eu.github.io/projects/celine-webapp/docs/development.md) | Local dev proxy setup, env vars, running tests |
+| [Architecture](https://celine-eu.github.io/projects/celine-webapp/docs/architecture) | BFF pattern, JWT flow, service dependencies, deployment model |
+| [API Reference](https://celine-eu.github.io/projects/celine-webapp/docs/api-reference) | All BFF endpoints: user, overview, notifications, settings |
+| [Features](https://celine-eu.github.io/projects/celine-webapp/docs/features) | Terms acceptance, web push, digital twin integration |
+| [Development](https://celine-eu.github.io/projects/celine-webapp/docs/development) | Local dev proxy setup, env vars, running tests |
 
 ## License
 
