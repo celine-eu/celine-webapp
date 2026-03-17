@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from celine.sdk.dt.community import DTApiError
+from celine.sdk.openapi.dt import errors as dt_errors
 from celine.sdk.openapi.dt.types import Unset, UNSET
 
 from fastapi import APIRouter, HTTPException
@@ -61,6 +62,10 @@ async def overview(
     try:
         participant = await dt.participants.profile(participant_id)
     except DTApiError as e:
+        if e.status_code == 404:
+            raise HTTPException(status_code=404, detail="not_a_participant")
+        raise
+    except dt_errors.UnexpectedStatus as e:
         if e.status_code == 404:
             raise HTTPException(status_code=404, detail="not_a_participant")
         raise

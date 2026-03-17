@@ -8,5 +8,6 @@ services:
     ports:
       - "8014:8014"
     extra_hosts:
-      - "keycloak.celine.localhost:172.17.0.1"
-      - "api.celine.localhost:172.17.0.1"
+      - "host.docker.internal:host-gateway"
+      - "keycloak.celine.localhost:host-gateway"
+      - "api.celine.localhost:host-gateway"
