@@ -134,3 +134,106 @@ class PushSubscriptionPayload(BaseModel):
 class PushSubscriptionUnsubscribePayload(BaseModel):
 
     endpoint: str
+
+
+# ─── Weather schemas ─────────────────────────────────────────────────────────
+
+class WeatherCurrent(BaseModel):
+    temp: float
+    humidity: int
+    uvi: float
+    clouds: int
+    wind_deg: int
+    weather_main: str
+    weather_description: str
+    sunrise: str
+    sunset: str
+
+
+class WeatherDayItem(BaseModel):
+    date: str
+    temp_min: float
+    temp_max: float
+    temp_day: float
+    pop: float
+    rain: Optional[float] = None
+    clouds: int
+    uvi: float
+    weather_main: str
+    weather_description: str
+    summary: Optional[str] = None
+
+
+class WeatherAlertItem(BaseModel):
+    event: str
+    sender_name: str
+    start_ts: str
+    end_ts: str
+    description: str
+
+
+class WeatherIrradianceItem(BaseModel):
+    ts: str
+    shortwave_radiation: float
+    diffuse_radiation: float
+    global_tilted_irradiance: float
+    cloud_cover: float
+
+
+class WeatherResponse(BaseModel):
+    current: Optional[WeatherCurrent] = None
+    daily: list[WeatherDayItem] = []
+    hourly_irradiance: list[WeatherIrradianceItem] = []
+    alerts: list[WeatherAlertItem] = []
+
+
+# ─── Forecast schemas ─────────────────────────────────────────────────────────
+
+class ForecastHourItem(BaseModel):
+    ts: str
+    value: float
+    lower: Optional[float] = None
+    upper: Optional[float] = None
+    period: str  # "actual" | "forecast"
+
+
+class ForecastResponse(BaseModel):
+    user_forecast: list[ForecastHourItem] = []
+    rec_forecast: list[ForecastHourItem] = []
+
+
+# ─── Suggestions schemas ──────────────────────────────────────────────────────
+
+class SuggestionItem(BaseModel):
+    id: str
+    suggestion_type: str
+    period_start: str
+    period_end: str
+    from_label: str
+    to_label: str
+    impact_kwh_estimated: float
+    reward_points: int
+    confidence: float
+    description: str
+    reason: str
+
+
+class SuggestionRespondRequest(BaseModel):
+    response: Literal["accepted", "declined"]
+
+
+# ─── Gamification schemas ─────────────────────────────────────────────────────
+
+class BadgeItem(BaseModel):
+    badge_id: str
+    label: str
+    icon: str
+    earned_at: str
+
+
+class GamificationResponse(BaseModel):
+    total_points: int
+    level: int
+    next_level_at: int
+    badges: list[BadgeItem] = []
+    actions_taken: int
