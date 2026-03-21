@@ -227,13 +227,14 @@ class SuggestionItem(BaseModel):
     suggestion_type: str
     period_start: str
     period_end: str
-    from_label: str
-    to_label: str
+    from_period: str      # i18n key, e.g. "morning"
+    clock_range: str      # e.g. "09:00–12:00"
+    to_is_tomorrow: bool
+    to_period: str        # i18n key, e.g. "morning", "late_morning"
+    to_time: str          # e.g. "10:30"
     impact_kwh_estimated: float
     reward_points: int
     confidence: float
-    description: str
-    reason: str
 
 
 class SuggestionRespondRequest(BaseModel):
@@ -245,7 +246,6 @@ class SuggestionRespondRequest(BaseModel):
 
 class BadgeItem(BaseModel):
     badge_id: str
-    label: str
     icon: str
     earned_at: str
 

@@ -27,10 +27,10 @@ EXPORT_THRESHOLD = 0.0
 MAX_SUGGESTIONS = 5
 
 BADGES: dict[str, dict] = {
-    "first-shift": {"label": "First Shift", "icon": "zap", "min_actions": 1},
-    "peak-saver": {"label": "Peak Saver", "icon": "sun", "min_actions": 5},
-    "solar-champion": {"label": "Solar Champion", "icon": "leaf", "min_points": 500},
-    "streak-3": {"label": "3-Day Streak", "icon": "trending-up", "streak_days": 3},
+    "first-shift":    {"icon": "zap",         "min_actions": 1},
+    "peak-saver":     {"icon": "sun",         "min_actions": 5},
+    "solar-champion": {"icon": "leaf",        "min_points": 500},
+    "streak-3":       {"icon": "trending-up", "streak_days": 3},
 }
 
 POINTS_PER_LEVEL = 100
@@ -56,10 +56,10 @@ def _fmt_label(dt_val: datetime) -> str:
     return dt_val.strftime("%H:%M")
 
 
-def _period_name(start_hour: int) -> str:
-    """Return a friendly time-of-day name for a starting hour."""
+def _period_key(start_hour: int) -> str:
+    """Return an i18n key for a time-of-day period."""
     if 5 <= start_hour < 9:
-        return "early morning"
+        return "early_morning"
     elif 9 <= start_hour < 12:
         return "morning"
     elif 12 <= start_hour < 14:
@@ -72,18 +72,20 @@ def _period_name(start_hour: int) -> str:
         return "night"
 
 
-def _target_label(target_dt: datetime, source_hour: int) -> str:
-    """Return a friendly label for the target solar window."""
-    h = target_dt.hour
-    # If source is evening/night (≥17), the solar window is 'tomorrow morning'
-    prefix = "tomorrow " if source_hour >= 17 else ""
-    if h < 9:
-        slot = "morning"
-    elif h < 12:
-        slot = "late morning"
+def _target_period_key(target_hour: int) -> str:
+    """Return an i18n key for the target solar window period."""
+    if target_hour < 9:
+        return "morning"
+    elif target_hour < 12:
+        return "late_morning"
+    elif target_hour < 14:
+        return "midday"
+    elif target_hour < 17:
+        return "afternoon"
+    elif target_hour < 20:
+        return "evening"
     else:
-        slot = f"{_fmt_label(target_dt)}"
-    return f"{prefix}{slot} ({_fmt_label(target_dt)})"
+        return "night"
 
 
 def _group_consecutive_hours(
@@ -252,11 +254,6 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
         impact_kwh = round(total_consumption * 0.6, 2)
         reward_points = round(impact_kwh * 10)
 
-        period_name = _period_name(group_start.hour)
-        target_label = _target_label(target_ts, group_start.hour)
-        target_end = target_ts + timedelta(hours=1)
-
-        # Compact clock range for reference
         clock_range = f"{_fmt_label(group_start)}–{_fmt_label(group_end)}"
 
         result.append(
@@ -265,13 +262,14 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
                 suggestion_type="shift-consumption",
                 period_start=group_start.isoformat(),
                 period_end=group_end.isoformat(),
-                from_label=f"This {period_name} ({clock_range})",
-                to_label=f"During {target_label}",
+                from_period=_period_key(group_start.hour),
+                clock_range=clock_range,
+                to_is_tomorrow=group_start.hour >= 17,
+                to_period=_target_period_key(target_ts.hour),
+                to_time=_fmt_label(target_ts),
                 impact_kwh_estimated=impact_kwh,
                 reward_points=reward_points,
                 confidence=0.75,
-                description=f"Move your {period_name} usage ({clock_range}) to {target_label} when the community has solar surplus",
-                reason="Community will have excess solar — reduce grid import and earn points",
             )
         )
 
@@ -398,8 +396,7 @@ async def suggestion_respond(
         badges = [
             BadgeItem(
                 badge_id=b.badge_id,
-                label=BADGES.get(b.badge_id, {}).get("label", b.badge_id),
-                icon=BADGES.get(b.badge_id, {}).get("icon", "award"),
+                icon=BADGES.get(b.badge_id, {}).get("icon", "zap"),
                 earned_at=b.earned_at.isoformat(),
             )
             for b in badge_rows

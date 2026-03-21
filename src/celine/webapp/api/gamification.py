@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["gamification"])
 
 BADGES: dict[str, dict] = {
-    "first-shift":    {"label": "First Shift",    "icon": "zap",          "min_actions": 1},
-    "peak-saver":     {"label": "Peak Saver",      "icon": "sun",          "min_actions": 5},
-    "solar-champion": {"label": "Solar Champion",  "icon": "leaf",         "min_points": 500},
-    "streak-3":       {"label": "3-Day Streak",    "icon": "trending-up",  "streak_days": 3},
+    "first-shift":    {"icon": "zap",         "min_actions": 1},
+    "peak-saver":     {"icon": "sun",         "min_actions": 5},
+    "solar-champion": {"icon": "leaf",        "min_points": 500},
+    "streak-3":       {"icon": "trending-up", "streak_days": 3},
 }
 
 POINTS_PER_LEVEL = 100
@@ -52,8 +52,7 @@ async def gamification(user: UserDep, db: DbDep) -> GamificationResponse:
         badges = [
             BadgeItem(
                 badge_id=b.badge_id,
-                label=BADGES.get(b.badge_id, {}).get("label", b.badge_id),
-                icon=BADGES.get(b.badge_id, {}).get("icon", "award"),
+                icon=BADGES.get(b.badge_id, {}).get("icon", "zap"),
                 earned_at=b.earned_at.isoformat(),
             )
             for b in badge_rows
