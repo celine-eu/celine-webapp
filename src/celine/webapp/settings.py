@@ -34,8 +34,9 @@ class Settings(BaseSettings):
 
     # Optional overrides
     smart_meter_api_url: Optional[str] = None
-    digital_twin_api_url: Optional[str] = "http://api.celine.localhost/dt"
-    nudging_api_url: Optional[str] = "http://api.celine.localhost/nudging"
+    digital_twin_api_url: Optional[str] = "http://host.docker.internal:8002"
+    nudging_api_url: Optional[str] = "http://host.docker.internal:8016"
+    rec_registry_url: Optional[str] = "http://host.docker.internal:8004"
 
 
 # Global settings instance

@@ -28,7 +28,7 @@ def _str(val: Any) -> str:
 
 @router.get("/forecast", response_model=ForecastResponse)
 async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
-    """Return 48h per-device and REC-level energy forecasts with confidence bands."""
+    """Return today's (05:00–00:00) per-device and REC-level energy forecasts."""
 
     participant = await dt.participants.profile(user.sub)
     community_id = participant.membership.community.key
@@ -45,10 +45,27 @@ async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
     except Exception as exc:
         logger.warning("Failed to fetch assets for %s: %s", user.sub, exc)
 
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(hours=48)
+    # Time window: today 05:00 → tomorrow 00:00
+    tz = timezone.utc
+    today_05 = datetime.now(tz).replace(hour=5, minute=0, second=0, microsecond=0)
+    tomorrow_midnight = (today_05 + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     async def fetch_meter_forecast():
+        try:
+            return await dt.participants.fetch_values(
+                participant_id=user.sub,
+                fetcher_id="total_meters_forecast",
+                payload={
+                    "start": today_05.isoformat(),
+                    "end": tomorrow_midnight.isoformat(),
+                },
+            )
+        except Exception as exc:
+            logger.warning("total_meters_forecast fetch failed: %s", exc)
+            return None
+
+    async def fetch_user_consumption():
+        """Individual meter consumption — shown as 'Your consumption' tab."""
         if not device_id:
             return None
         try:
@@ -57,30 +74,19 @@ async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
                 fetcher_id="meter_forecast",
                 payload={
                     "device_id": device_id,
-                    "start": now.isoformat(),
-                    "end": end.isoformat(),
+                    "start": today_05.isoformat(),
+                    "end": tomorrow_midnight.isoformat(),
                 },
             )
         except Exception as exc:
-            logger.warning("meter_forecast fetch failed: %s", exc)
+            logger.warning("meter_forecast (individual consumption) fetch failed: %s", exc)
             return None
 
-    async def fetch_rec_forecast():
-        try:
-            return await dt.communities.fetch_values(
-                community_id=community_id,
-                fetcher_id="rec_forecast",
-                payload={
-                    "start": now.isoformat(),
-                    "end": end.isoformat(),
-                },
-            )
-        except Exception as exc:
-            logger.warning("rec_forecast fetch failed: %s", exc)
-            return None
+    meter_res, consumption_res = await asyncio.gather(
+        fetch_meter_forecast(), fetch_user_consumption()
+    )
 
-    meter_res, rec_res = await asyncio.gather(fetch_meter_forecast(), fetch_rec_forecast())
-
+    # user_forecast = community net exchange (positive = solar surplus available)
     user_forecast: list[ForecastHourItem] = []
     if meter_res and meter_res.count > 0:
         for item in meter_res.items:
@@ -89,24 +95,25 @@ async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
             user_forecast.append(
                 ForecastHourItem(
                     ts=_str(ts),
-                    value=_float(r.get("total_consumption_kwh")),
-                    lower=float(r["total_consumption_lower"]) if r.get("total_consumption_lower") is not None else None,
-                    upper=float(r["total_consumption_upper"]) if r.get("total_consumption_upper") is not None else None,
+                    value=_float(r.get("net_exchange_kwh")),
+                    lower=None,
+                    upper=None,
                     period=_str(r.get("period")) or "forecast",
                 )
             )
 
+    # rec_forecast = individual meter consumption (repurposed field, same schema)
     rec_forecast: list[ForecastHourItem] = []
-    if rec_res and rec_res.count > 0:
-        for item in rec_res.items:
+    if consumption_res and consumption_res.count > 0:
+        for item in consumption_res.items:
             r = item.to_dict()
-            ts = r.get("datetime") or r.get("ts") or ""
+            ts = r.get("timestamp") or r.get("datetime") or ""
             rec_forecast.append(
                 ForecastHourItem(
                     ts=_str(ts),
-                    value=_float(r.get("prediction")),
-                    lower=float(r["lower"]) if r.get("lower") is not None else None,
-                    upper=float(r["upper"]) if r.get("upper") is not None else None,
+                    value=_float(r.get("total_consumption_kwh")),
+                    lower=float(r["total_consumption_lower"]) if r.get("total_consumption_lower") is not None else None,
+                    upper=float(r["total_consumption_upper"]) if r.get("total_consumption_upper") is not None else None,
                     period=_str(r.get("period")) or "forecast",
                 )
             )

@@ -136,6 +136,23 @@ class PushSubscriptionUnsubscribePayload(BaseModel):
     endpoint: str
 
 
+# ─── Community metadata ───────────────────────────────────────────────────────
+
+class CommunityMetaResponse(BaseModel):
+    key: str
+    name: str
+    description: Optional[str] = None
+    legal_name: Optional[str] = None
+    legal_form: Optional[str] = None
+    vat: Optional[str] = None
+    email: Optional[str] = None
+    pec: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    terms_url: Optional[str] = None
+    privacy_url: Optional[str] = None
+
+
 # ─── Weather schemas ─────────────────────────────────────────────────────────
 
 class WeatherCurrent(BaseModel):
@@ -185,6 +202,7 @@ class WeatherResponse(BaseModel):
     daily: list[WeatherDayItem] = []
     hourly_irradiance: list[WeatherIrradianceItem] = []
     alerts: list[WeatherAlertItem] = []
+    irradiance_date: Optional[str] = None  # "YYYY-MM-DD" of the irradiance data
 
 
 # ─── Forecast schemas ─────────────────────────────────────────────────────────
@@ -220,6 +238,7 @@ class SuggestionItem(BaseModel):
 
 class SuggestionRespondRequest(BaseModel):
     response: Literal["accepted", "declined"]
+    reward_points: Optional[int] = None
 
 
 # ─── Gamification schemas ─────────────────────────────────────────────────────
@@ -231,9 +250,21 @@ class BadgeItem(BaseModel):
     earned_at: str
 
 
+class FlexibilityCommitmentItem(BaseModel):
+    id: str
+    suggestion_id: str
+    status: Literal["committed", "settled", "rejected"]
+    period_end: str
+    reward_points_estimated: int
+    reward_points_actual: Optional[int] = None
+    committed_at: str
+    settled_at: Optional[str] = None
+
+
 class GamificationResponse(BaseModel):
     total_points: int
     level: int
     next_level_at: int
     badges: list[BadgeItem] = []
     actions_taken: int
+    pending_commitment: Optional[FlexibilityCommitmentItem] = None

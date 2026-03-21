@@ -41,6 +41,13 @@ def _int(val: Any, default: int = 0) -> int:
         return default
 
 
+def _normalize_temp(val: Any) -> float:
+    t = _float(val)
+    if t > 100:  # likely stored as Kelvin
+        return round(t - 273.15, 1)
+    return t
+
+
 @router.get("/weather", response_model=WeatherResponse)
 async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
     """Return current conditions, 7-day daily forecast, 24h irradiance, and active alerts."""
@@ -51,7 +58,8 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
     now = datetime.now(timezone.utc)
     today = now
     week_end = now + timedelta(days=7)
-    irradiance_end = now + timedelta(hours=24)
+    today_05 = now.replace(hour=5, minute=0, second=0, microsecond=0)
+    tomorrow_midnight = (today_05 + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     async def fetch_current():
         try:
@@ -96,8 +104,8 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
                 community_id=community_id,
                 fetcher_id="weather_irradiance_hourly",
                 payload={
-                    "start": now.isoformat(),
-                    "end": irradiance_end.isoformat(),
+                    "start": today_05.isoformat(),
+                    "end": tomorrow_midnight.isoformat(),
                 },
             )
         except Exception as exc:
@@ -116,7 +124,7 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
     if current_res and current_res.count > 0:
         r = current_res.items[0].to_dict()
         current = WeatherCurrent(
-            temp=_float(r.get("temp")),
+            temp=_normalize_temp(r.get("temp")),
             humidity=_int(r.get("humidity")),
             uvi=_float(r.get("uvi")),
             clouds=_int(r.get("clouds")),
@@ -140,9 +148,9 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
             daily.append(
                 WeatherDayItem(
                     date=date_str,
-                    temp_min=_float(r.get("temp_min")),
-                    temp_max=_float(r.get("temp_max")),
-                    temp_day=_float(r.get("temp_day")),
+                    temp_min=_normalize_temp(r.get("temp_min")),
+                    temp_max=_normalize_temp(r.get("temp_max")),
+                    temp_day=_normalize_temp(r.get("temp_day")),
                     pop=_float(r.get("pop")),
                     rain=float(r["rain"]) if r.get("rain") is not None else None,
                     clouds=_int(r.get("clouds")),
@@ -170,10 +178,14 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
 
     # Parse irradiance
     hourly_irradiance: list[WeatherIrradianceItem] = []
+    irradiance_date: str | None = None
     if irradiance_res and irradiance_res.count > 0:
         for item in irradiance_res.items:
             r = item.to_dict()
             ts = r.get("datetime") or r.get("ts") or ""
+            if irradiance_date is None:
+                ts_str = _str(ts)
+                irradiance_date = ts_str[:10] if len(ts_str) >= 10 else today.date().isoformat()
             hourly_irradiance.append(
                 WeatherIrradianceItem(
                     ts=_str(ts),
@@ -184,9 +196,13 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
                 )
             )
 
+    if irradiance_date is None and hourly_irradiance:
+        irradiance_date = today.date().isoformat()
+
     return WeatherResponse(
         current=current,
         daily=daily,
         hourly_irradiance=hourly_irradiance,
         alerts=alerts,
+        irradiance_date=irradiance_date,
     )

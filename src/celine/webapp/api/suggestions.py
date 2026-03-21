@@ -11,25 +11,26 @@ from sqlalchemy import select, func
 from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import (
     BadgeItem,
+    FlexibilityCommitmentItem,
     GamificationResponse,
     SuggestionItem,
     SuggestionRespondRequest,
 )
-from celine.webapp.db.models import SuggestionInteraction, UserBadge, UserPoints
+from celine.webapp.db.models import FlexibilityCommitment, SuggestionInteraction, UserBadge, UserPoints
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["suggestions"])
 
-# Threshold: community is net-exporting when prediction < this value (kWh/h)
+# Threshold: community is net-exporting when net_exchange_kwh > this value (kWh surplus)
 EXPORT_THRESHOLD = 0.0
 MAX_SUGGESTIONS = 5
 
 BADGES: dict[str, dict] = {
-    "first-shift":    {"label": "First Shift",    "icon": "zap",          "min_actions": 1},
-    "peak-saver":     {"label": "Peak Saver",      "icon": "sun",          "min_actions": 5},
-    "solar-champion": {"label": "Solar Champion",  "icon": "leaf",         "min_points": 500},
-    "streak-3":       {"label": "3-Day Streak",    "icon": "trending-up",  "streak_days": 3},
+    "first-shift": {"label": "First Shift", "icon": "zap", "min_actions": 1},
+    "peak-saver": {"label": "Peak Saver", "icon": "sun", "min_actions": 5},
+    "solar-champion": {"label": "Solar Champion", "icon": "leaf", "min_points": 500},
+    "streak-3": {"label": "3-Day Streak", "icon": "trending-up", "streak_days": 3},
 }
 
 POINTS_PER_LEVEL = 100
@@ -55,6 +56,52 @@ def _fmt_label(dt_val: datetime) -> str:
     return dt_val.strftime("%H:%M")
 
 
+def _period_name(start_hour: int) -> str:
+    """Return a friendly time-of-day name for a starting hour."""
+    if 5 <= start_hour < 9:
+        return "early morning"
+    elif 9 <= start_hour < 12:
+        return "morning"
+    elif 12 <= start_hour < 14:
+        return "midday"
+    elif 14 <= start_hour < 17:
+        return "afternoon"
+    elif 17 <= start_hour < 20:
+        return "evening"
+    else:  # 20-23
+        return "night"
+
+
+def _target_label(target_dt: datetime, source_hour: int) -> str:
+    """Return a friendly label for the target solar window."""
+    h = target_dt.hour
+    # If source is evening/night (≥17), the solar window is 'tomorrow morning'
+    prefix = "tomorrow " if source_hour >= 17 else ""
+    if h < 9:
+        slot = "morning"
+    elif h < 12:
+        slot = "late morning"
+    else:
+        slot = f"{_fmt_label(target_dt)}"
+    return f"{prefix}{slot} ({_fmt_label(target_dt)})"
+
+
+def _group_consecutive_hours(
+    hours: list[tuple[datetime, float]]
+) -> list[list[tuple[datetime, float]]]:
+    """Group a chronologically sorted list of (datetime, consumption) into consecutive runs."""
+    if not hours:
+        return []
+    groups: list[list[tuple[datetime, float]]] = [[hours[0]]]
+    for dt, kwh in hours[1:]:
+        prev_dt = groups[-1][-1][0]
+        if (dt - prev_dt) == timedelta(hours=1):
+            groups[-1].append((dt, kwh))
+        else:
+            groups.append([(dt, kwh)])
+    return groups
+
+
 def _level(points: int) -> int:
     return max(1, points // POINTS_PER_LEVEL + 1)
 
@@ -73,10 +120,10 @@ async def _check_and_award_badges(
     existing_badge_ids = {
         row.badge_id
         for row in (
-            await session.execute(
-                select(UserBadge).where(UserBadge.user_id == user_id)
-            )
-        ).scalars().all()
+            await session.execute(select(UserBadge).where(UserBadge.user_id == user_id))
+        )
+        .scalars()
+        .all()
     }
 
     for badge_id, cfg in BADGES.items():
@@ -93,7 +140,7 @@ async def _check_and_award_badges(
 
 @router.get("/suggestions", response_model=list[SuggestionItem])
 async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
-    """Generate ranked load-shifting suggestions from the 48h forecast."""
+    """Generate ranked load-shifting suggestions from today's forecast (05:00–00:00)."""
 
     participant = await dt.participants.profile(user.sub)
     community_id = participant.membership.community.key
@@ -109,8 +156,10 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
     except Exception as exc:
         logger.warning("Failed to fetch assets: %s", exc)
 
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(hours=48)
+    # Time window: today 05:00 → tomorrow 00:00
+    tz = timezone.utc
+    today_05 = datetime.now(tz).replace(hour=5, minute=0, second=0, microsecond=0)
+    tomorrow_midnight = (today_05 + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Fetch REC forecast
     rec_items: list[dict] = []
@@ -118,106 +167,110 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
         rec_res = await dt.communities.fetch_values(
             community_id=community_id,
             fetcher_id="rec_forecast",
-            payload={"start": now.isoformat(), "end": end.isoformat()},
+            payload={
+                "start": today_05.isoformat(),
+                "end": tomorrow_midnight.isoformat(),
+            },
         )
         if rec_res and rec_res.count > 0:
             rec_items = [item.to_dict() for item in rec_res.items]
     except Exception as exc:
         logger.warning("rec_forecast fetch failed: %s", exc)
 
-    # Fetch user meter forecast
+    # Fetch community aggregate meter forecast (total_meters_forecast — no device_id)
     meter_items: list[dict] = []
-    if device_id:
+    try:
+        meter_res = await dt.participants.fetch_values(
+            participant_id=user.sub,
+            fetcher_id="total_meters_forecast",
+            payload={
+                "start": today_05.isoformat(),
+                "end": tomorrow_midnight.isoformat(),
+            },
+        )
+        if meter_res and meter_res.count > 0:
+            meter_items = [item.to_dict() for item in meter_res.items]
+    except Exception as exc:
+        logger.warning("total_meters_forecast fetch failed: %s", exc)
+
+    # Find net-export windows from total_meters_forecast (net_exchange_kwh > 0 = surplus)
+    # Do NOT use rec_forecast.prediction for this — it is a community aggregate in Wh,
+    # always positive, and not a net-exchange indicator.
+    all_surplus_hours: set[str] = set()
+    for item in meter_items:
+        net_exchange = _float(item.get("net_exchange_kwh"), 0.0)
+        if net_exchange > EXPORT_THRESHOLD:
+            ts = _str_ts(item.get("timestamp") or item.get("datetime") or "")
+            all_surplus_hours.add(ts[:13])
+
+    # Find the best solar target hour (earliest surplus hour, waking hours only)
+    target_ts: datetime | None = None
+    for item in sorted(meter_items, key=lambda r: _str_ts(r.get("timestamp") or r.get("datetime") or "")):
+        net_exchange = _float(item.get("net_exchange_kwh"), 0.0)
+        if net_exchange <= EXPORT_THRESHOLD:
+            continue
+        ts_str = _str_ts(item.get("timestamp") or item.get("datetime") or "")
         try:
-            meter_res = await dt.participants.fetch_values(
-                participant_id=user.sub,
-                fetcher_id="meter_forecast",
-                payload={
-                    "device_id": device_id,
-                    "start": now.isoformat(),
-                    "end": end.isoformat(),
-                },
-            )
-            if meter_res and meter_res.count > 0:
-                meter_items = [item.to_dict() for item in meter_res.items]
-        except Exception as exc:
-            logger.warning("meter_forecast fetch failed: %s", exc)
-
-    # Find net-export windows (community exporting = excess solar available)
-    export_hours: set[str] = set()
-    for item in rec_items:
-        prediction = _float(item.get("prediction"), 999.0)
-        if prediction < EXPORT_THRESHOLD:
-            ts = _str_ts(item.get("datetime") or item.get("ts"))
-            export_hours.add(ts[:13])  # group by hour prefix YYYY-MM-DDTHH
-
-    # Find user's high-consumption hours outside solar windows
-    result: list[SuggestionItem] = []
-    seen_windows: set[str] = set()
-
-    # Sort meter items by consumption descending
-    meter_items_sorted = sorted(
-        meter_items,
-        key=lambda r: _float(r.get("total_consumption_kwh")),
-        reverse=True,
-    )
-
-    for item in meter_items_sorted:
-        if len(result) >= MAX_SUGGESTIONS:
+            candidate = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
+        except ValueError:
+            continue
+        if candidate.hour >= 5:
+            target_ts = candidate
             break
 
-        ts = item.get("timestamp") or item.get("datetime") or ""
-        ts_str = _str_ts(ts)
+    if target_ts is None:
+        return []
+
+    # Collect non-surplus waking hours sorted chronologically
+    import_hours: list[tuple[datetime, float]] = []
+    for item in meter_items:
+        ts_str = _str_ts(item.get("timestamp") or item.get("datetime") or "")
         hour_key = ts_str[:13]
-
-        # Skip if this is already a solar surplus hour (no shift needed)
-        if hour_key in export_hours:
+        if hour_key in all_surplus_hours:
             continue
-
-        # Find best target hour in solar window
-        target_ts: datetime | None = None
-        for rec_item in rec_items:
-            rec_ts = _str_ts(rec_item.get("datetime") or rec_item.get("ts"))
-            if rec_ts[:13] in export_hours:
-                try:
-                    target_ts = datetime.fromisoformat(
-                        rec_ts.replace(" ", "T").split("+")[0]
-                    )
-                except ValueError:
-                    continue
-                break
-
-        if target_ts is None:
-            continue
-
         try:
             source_dt = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
         except ValueError:
             continue
-
-        window_key = f"{ts_str[:13]}->{target_ts.isoformat()[:13]}"
-        if window_key in seen_windows:
+        if source_dt.hour < 5:
             continue
-        seen_windows.add(window_key)
+        consumption = _float(item.get("consumption_kwh") or item.get("total_consumption_kwh"))
+        import_hours.append((source_dt, consumption))
 
-        consumption = _float(item.get("total_consumption_kwh"))
-        impact_kwh = round(consumption * 0.6, 2)  # assume 60% shiftable
+    # Sort chronologically and group consecutive hours
+    import_hours.sort(key=lambda x: x[0])
+    groups = _group_consecutive_hours(import_hours)
+
+    # Sort groups by total consumption descending, take top MAX_SUGGESTIONS
+    groups.sort(key=lambda g: sum(kwh for _, kwh in g), reverse=True)
+
+    result: list[SuggestionItem] = []
+    for group in groups[:MAX_SUGGESTIONS]:
+        group_start = group[0][0]
+        group_end = group[-1][0] + timedelta(hours=1)
+        total_consumption = sum(kwh for _, kwh in group)
+        impact_kwh = round(total_consumption * 0.6, 2)
         reward_points = round(impact_kwh * 10)
-        period_end_dt = source_dt + timedelta(hours=1)
-        target_end_dt = target_ts + timedelta(hours=1)
+
+        period_name = _period_name(group_start.hour)
+        target_label = _target_label(target_ts, group_start.hour)
+        target_end = target_ts + timedelta(hours=1)
+
+        # Compact clock range for reference
+        clock_range = f"{_fmt_label(group_start)}–{_fmt_label(group_end)}"
 
         result.append(
             SuggestionItem(
-                id=_suggestion_id("shift-consumption", ts_str[:16]),
+                id=_suggestion_id("shift-consumption", group_start.isoformat()[:16]),
                 suggestion_type="shift-consumption",
-                period_start=source_dt.isoformat(),
-                period_end=period_end_dt.isoformat(),
-                from_label=f"{_fmt_label(source_dt)}–{_fmt_label(period_end_dt)}",
-                to_label=f"{_fmt_label(target_ts)}–{_fmt_label(target_end_dt)}",
+                period_start=group_start.isoformat(),
+                period_end=group_end.isoformat(),
+                from_label=f"This {period_name} ({clock_range})",
+                to_label=f"During {target_label}",
                 impact_kwh_estimated=impact_kwh,
                 reward_points=reward_points,
                 confidence=0.75,
-                description=f"Shift loads from {_fmt_label(source_dt)} to {_fmt_label(target_ts)} when solar is available",
+                description=f"Move your {period_name} usage ({clock_range}) to {target_label} when the community has solar surplus",
                 reason="Community will have excess solar — reduce grid import and earn points",
             )
         )
@@ -225,7 +278,9 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
     return result
 
 
-@router.post("/suggestions/{suggestion_id}/respond", response_model=GamificationResponse)
+@router.post(
+    "/suggestions/{suggestion_id}/respond", response_model=GamificationResponse
+)
 async def suggestion_respond(
     suggestion_id: str,
     body: SuggestionRespondRequest,
@@ -237,6 +292,32 @@ async def suggestion_respond(
     now = datetime.now(timezone.utc)
 
     async with db as session:
+        # Lazy-settle any past FlexibilityCommitments where period_end < now
+        past_commitments = (
+            await session.execute(
+                select(FlexibilityCommitment).where(
+                    FlexibilityCommitment.user_id == user.sub,
+                    FlexibilityCommitment.status == "committed",
+                    FlexibilityCommitment.period_end < now,
+                )
+            )
+        ).scalars().all()
+
+        # Get or create points row for settlement
+        points_row = await session.get(UserPoints, user.sub)
+        if points_row is None:
+            points_row = UserPoints(user_id=user.sub, total_points=0, level=1)
+            session.add(points_row)
+
+        for commitment in past_commitments:
+            # Award estimated points (mock settlement)
+            points_row.total_points += commitment.reward_points_estimated
+            points_row.level = max(1, points_row.total_points // POINTS_PER_LEVEL + 1)
+            points_row.updated_at = now
+            commitment.status = "settled"
+            commitment.settled_at = now
+            commitment.reward_points_actual = commitment.reward_points_estimated
+
         # Upsert interaction
         existing = (
             await session.execute(
@@ -247,10 +328,7 @@ async def suggestion_respond(
             )
         ).scalar_one_or_none()
 
-        reward_points = 0
-        if body.response == "accepted":
-            # Simple point estimate — real value comes from the suggestion payload
-            reward_points = 10
+        reward_points = body.reward_points if body.reward_points is not None else 10
 
         if existing:
             existing.response = body.response
@@ -269,16 +347,19 @@ async def suggestion_respond(
                 )
             )
 
-        # Update points
-        points_row = await session.get(UserPoints, user.sub)
-        if points_row is None:
-            points_row = UserPoints(user_id=user.sub, total_points=0, level=1)
-            session.add(points_row)
-
+        # Create FlexibilityCommitment for accepted responses
+        pending_commitment: FlexibilityCommitment | None = None
         if body.response == "accepted":
-            points_row.total_points += reward_points
-            points_row.level = max(1, points_row.total_points // POINTS_PER_LEVEL + 1)
-            points_row.updated_at = now
+            pending_commitment = FlexibilityCommitment(
+                user_id=user.sub,
+                suggestion_id=suggestion_id,
+                suggestion_type="shift-consumption",
+                period_start=now,
+                period_end=now + timedelta(hours=1),
+                status="committed",
+                reward_points_estimated=reward_points,
+            )
+            session.add(pending_commitment)
 
         # Count accepted actions
         actions_taken = (
@@ -299,12 +380,20 @@ async def suggestion_respond(
         )
         await session.commit()
 
+        # Refresh pending commitment to get generated fields
+        if pending_commitment:
+            await session.refresh(pending_commitment)
+
         # Build response
         badge_rows = (
-            await session.execute(
-                select(UserBadge).where(UserBadge.user_id == user.sub)
+            (
+                await session.execute(
+                    select(UserBadge).where(UserBadge.user_id == user.sub)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         badges = [
             BadgeItem(
@@ -316,10 +405,24 @@ async def suggestion_respond(
             for b in badge_rows
         ]
 
+        commitment_item: FlexibilityCommitmentItem | None = None
+        if pending_commitment:
+            commitment_item = FlexibilityCommitmentItem(
+                id=str(pending_commitment.id),
+                suggestion_id=pending_commitment.suggestion_id,
+                status=pending_commitment.status,
+                period_end=pending_commitment.period_end.isoformat(),
+                reward_points_estimated=pending_commitment.reward_points_estimated,
+                reward_points_actual=pending_commitment.reward_points_actual,
+                committed_at=pending_commitment.committed_at.isoformat(),
+                settled_at=pending_commitment.settled_at.isoformat() if pending_commitment.settled_at else None,
+            )
+
     return GamificationResponse(
         total_points=points_row.total_points,
         level=points_row.level,
         next_level_at=_next_level_at(points_row.total_points),
         badges=badges,
         actions_taken=actions_taken,
+        pending_commitment=commitment_item,
     )

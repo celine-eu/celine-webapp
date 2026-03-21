@@ -12,6 +12,7 @@ from celine.webapp.api import (
     forecast_router,
     suggestions_router,
     gamification_router,
+    community_router,
 )
 
 
@@ -29,5 +30,6 @@ def create_api_router() -> APIRouter:
     api_router.include_router(forecast_router)
     api_router.include_router(suggestions_router)
     api_router.include_router(gamification_router)
+    api_router.include_router(community_router)
 
     return api_router

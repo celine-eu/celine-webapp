@@ -9,6 +9,7 @@ from celine.webapp.api.weather import router as weather_router
 from celine.webapp.api.forecast import router as forecast_router
 from celine.webapp.api.suggestions import router as suggestions_router
 from celine.webapp.api.gamification import router as gamification_router
+from celine.webapp.api.community import router as community_router
 
 __all__ = [
     "user_router",
@@ -20,4 +21,5 @@ __all__ = [
     "forecast_router",
     "suggestions_router",
     "gamification_router",
+    "community_router",
 ]

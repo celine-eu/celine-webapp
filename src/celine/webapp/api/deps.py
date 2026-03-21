@@ -13,6 +13,7 @@ from celine.sdk.auth import JwtUser
 from celine.sdk.auth.static import StaticTokenProvider
 from celine.sdk.dt import DTClient
 from celine.sdk.nudging.client import NudgingClient
+from celine.sdk.rec_registry import RecRegistryUserClient
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,17 @@ def get_nudging_client(request: Request) -> NudgingClient:
     return NudgingClient(base_url=settings.nudging_api_url, default_token=raw_token)
 
 
+def get_registry_client(request: Request) -> RecRegistryUserClient:
+    """Create a RecRegistryUserClient forwarding the caller's JWT."""
+    if not settings.rec_registry_url:
+        raise HTTPException(status_code=503, detail="REC Registry not configured")
+    raw_token = get_raw_token(request)
+    return RecRegistryUserClient(
+        base_url=settings.rec_registry_url,
+        default_token=raw_token,
+    )
+
+
 def get_client_ip(request: Request) -> str:
     """Extract client IP from request headers."""
     forwarded = request.headers.get("X-Forwarded-For")
@@ -121,3 +133,4 @@ UserDep = Annotated[JwtUser, Depends(get_user_from_request)]
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 DTDep = Annotated[DTClient, Depends(get_dt_client)]
 NudgingDep = Annotated[NudgingClient, Depends(get_nudging_client)]
+RegistryDep = Annotated[RecRegistryUserClient, Depends(get_registry_client)]
