@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.1.1 (2026-03-23)
+
+### Bug Fixes
+
+- Deduplicate ids
+  ([`119e476`](https://github.com/celine-eu/celine-webapp/commit/119e476a851420787fcf27435ac3bbfc442deed5))
+
+### Chores
+
+- **deps**: Bump fastapi from 0.128.2 to 0.129.0
+  ([`a6aeed7`](https://github.com/celine-eu/celine-webapp/commit/a6aeed7060804e52b91d875ea837d9311875ad92))
+
+- **deps**: Bump pydantic-settings from 2.12.0 to 2.13.0
+  ([`807e810`](https://github.com/celine-eu/celine-webapp/commit/807e810d6bbc67e17622883467afcd1b0713a51e))
+
+- **deps**: Bump the runtime-dependencies group across 1 directory with 2 updates
+  ([`06b57e0`](https://github.com/celine-eu/celine-webapp/commit/06b57e029a75ae943808fbee06394e42321228d3))
+
+
 ## v1.1.0 (2026-03-23)
 
 ### Chores
