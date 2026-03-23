@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-03-23)
+
+### Chores
+
+- Upgrade celine-sdk to 1.4.3
+  ([`342285d`](https://github.com/celine-eu/celine-webapp/commit/342285dff69c361e76127cb4e2eb808834c218a0))
+
+### Features
+
+- Add flexibilty and points API
+  ([`9034f15`](https://github.com/celine-eu/celine-webapp/commit/9034f157f092c4f6fe4d42a4bd8230ca6206271a))
+
+- Add suggestions, load REC details
+  ([`2733cfd`](https://github.com/celine-eu/celine-webapp/commit/2733cfdc472c70bf70aa27dd0fda8f44dc58da48))
+
+- Add translations
+  ([`fcbf5ab`](https://github.com/celine-eu/celine-webapp/commit/fcbf5ab909fda17f762b3e811531fac5e2a90822))
+
+
 ## v1.0.5 (2026-03-06)
 
 ### Bug Fixes
