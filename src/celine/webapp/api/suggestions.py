@@ -239,8 +239,12 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
         consumption = _float(item.get("consumption_kwh") or item.get("total_consumption_kwh"))
         import_hours.append((source_dt, consumption))
 
-    # Sort chronologically and group consecutive hours
-    import_hours.sort(key=lambda x: x[0])
+    # Deduplicate by timestamp (sum consumption if multiple entries share the same datetime)
+    seen: dict[datetime, float] = {}
+    for dt, kwh in import_hours:
+        seen[dt] = seen.get(dt, 0.0) + kwh
+    import_hours = sorted(seen.items(), key=lambda x: x[0])
+
     groups = _group_consecutive_hours(import_hours)
 
     # Sort groups by total consumption descending, take top MAX_SUGGESTIONS
