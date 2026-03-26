@@ -4,6 +4,7 @@ from celine.webapp.api.user import router as user_router
 from celine.webapp.api.overview import router as overview_router
 from celine.webapp.api.notifications import router as notifications_router
 from celine.webapp.api.settings_routes import router as settings_routes_router
+from celine.webapp.api.co2_settings import router as co2_settings_router
 from celine.webapp.api.meta import router as meta_router
 from celine.webapp.api.weather import router as weather_router
 from celine.webapp.api.forecast import router as forecast_router
@@ -16,6 +17,7 @@ __all__ = [
     "overview_router",
     "notifications_router",
     "settings_routes_router",
+    "co2_settings_router",
     "meta_router",
     "weather_router",
     "forecast_router",

@@ -8,7 +8,7 @@ from celine.sdk.dt.community import DTApiError
 from celine.sdk.openapi.dt import errors as dt_errors
 from celine.sdk.openapi.dt.types import Unset, UNSET
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import OverviewResponse
@@ -46,6 +46,7 @@ async def overview(
     user: UserDep,
     db: DbDep,
     dt: DTDep,
+    days: int = Query(7, ge=7, le=30, description="Number of days to include in the trend (7 or 30)"),
 ) -> OverviewResponse:
     """Get overview dashboard data from the Digital Twin.
 
@@ -121,10 +122,10 @@ async def overview(
     }
     trend: list[dict] = []
 
-    # Time range for queries (last 12 hours for user data, last 7 days for trend)
+    # Time range for queries
     now = datetime.now(timezone.utc)
     twelve_hours_ago = now - timedelta(hours=12)
-    seven_days_ago = now - timedelta(days=7)
+    trend_start = now - timedelta(days=days)
 
     # -------------------------------------------------------------------------
     # Fetch user meter data (last 12 hours) using the meters_data value fetcher
@@ -193,7 +194,7 @@ async def overview(
                 community_id=community_id,
                 fetcher_id="rec_self_consumption",
                 payload={
-                    "start": seven_days_ago.isoformat(),
+                    "start": trend_start.isoformat(),
                     "end": now.isoformat(),
                 },
             )
@@ -224,7 +225,7 @@ async def overview(
 
                 # Build trend from the same data (group by day)
                 trend = _build_daily_trend(
-                    [item.to_dict() for item in items], seven_days_ago, now
+                    [item.to_dict() for item in items], trend_start, now
                 )
 
         except Exception as exc:
@@ -237,8 +238,8 @@ async def overview(
     # Fallback trend if DT didn't provide data
     if not trend:
         base = datetime.now(timezone.utc).date()
-        for d in range(7):
-            day = (base - timedelta(days=(6 - d))).isoformat()
+        for d in range(days):
+            day = (base - timedelta(days=(days - 1 - d))).isoformat()
             trend.append(
                 {
                     "date": day,
@@ -249,7 +250,7 @@ async def overview(
             )
 
     return OverviewResponse(
-        period="Last 7 days",
+        period=f"Last {days} days",
         user=user_data,
         rec=rec_data,
         trend=trend,
@@ -267,6 +268,8 @@ def _build_daily_trend(
     Groups hourly rec_virtual_consumption records by day and sums values.
     """
     from collections import defaultdict
+
+    num_days = max(1, (end.date() - start.date()).days + 1)
 
     daily_data: dict[str, dict[str, float]] = defaultdict(
         lambda: {
@@ -302,11 +305,11 @@ def _build_daily_trend(
             item.get("self_consumption_kw")
         )
 
-    # Build sorted trend list for last 7 days
+    # Build sorted trend list for the requested period
     trend = []
     base = end.date()
-    for d in range(7):
-        day = (base - timedelta(days=(6 - d))).isoformat()
+    for d in range(num_days):
+        day = (base - timedelta(days=(num_days - 1 - d))).isoformat()
         if day in daily_data:
             trend.append(
                 {

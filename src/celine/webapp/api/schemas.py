@@ -261,6 +261,13 @@ class FlexibilityCommitmentItem(BaseModel):
     settled_at: Optional[str] = None
 
 
+class RankingInfo(BaseModel):
+    position: int
+    total_members: int
+    percentile: int  # top X% (e.g. 10 means "top 10%")
+    period: Literal["week", "month"]
+
+
 class GamificationResponse(BaseModel):
     total_points: int
     level: int
@@ -268,3 +275,38 @@ class GamificationResponse(BaseModel):
     badges: list[BadgeItem] = []
     actions_taken: int
     pending_commitment: Optional[FlexibilityCommitmentItem] = None
+    ranking: Optional[RankingInfo] = None
+
+
+# ─── Commitment history schemas ────────────────────────────────────────────────
+
+class FlexibilityHistoryItem(BaseModel):
+    id: str
+    suggestion_type: str
+    period_start: str
+    period_end: str
+    committed_at: str
+    settled_at: Optional[str] = None
+    status: Literal["committed", "settled", "rejected"]
+    reward_points_estimated: int
+    reward_points_actual: Optional[int] = None
+    impact_kwh_actual: Optional[float] = None
+
+
+class CommitmentHistoryResponse(BaseModel):
+    items: list[FlexibilityHistoryItem]
+    total_points_earned: int
+
+
+# ─── CO2 settings schemas ──────────────────────────────────────────────────────
+
+class Co2LocaleSettings(BaseModel):
+    country_code: str
+    country_name: str
+    kg_per_kwh: float        # kg of CO2 saved per kWh of renewable production
+    trees_per_ton: float     # equivalent trees planted per ton of CO2 saved
+
+
+class Co2SettingsResponse(BaseModel):
+    current: Co2LocaleSettings
+    available: list[Co2LocaleSettings]
