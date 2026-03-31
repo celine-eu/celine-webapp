@@ -4,7 +4,8 @@ services:
       context: ./
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - path: .env
+        required: false
     ports:
       - "8014:8014"
     extra_hosts:
