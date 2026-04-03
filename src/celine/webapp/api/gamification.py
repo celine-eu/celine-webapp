@@ -1,14 +1,13 @@
 # celine/webapp/api/gamification.py
 """Gamification routes."""
-import hashlib
 import logging
-import random
-from datetime import datetime, timedelta, timezone
+import math
+from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from sqlalchemy import select, func
 
-from celine.webapp.api.deps import DbDep, UserDep
+from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import (
     BadgeItem,
     CommitmentHistoryResponse,
@@ -16,7 +15,7 @@ from celine.webapp.api.schemas import (
     GamificationResponse,
     RankingInfo,
 )
-from celine.webapp.db.models import UserPoints, UserBadge, SuggestionInteraction
+from celine.webapp.db.models import FlexibilityCommitment, UserPoints, UserBadge, SuggestionInteraction
 
 logger = logging.getLogger(__name__)
 
@@ -37,100 +36,18 @@ def _level(total_points: int) -> int:
 
 
 def _next_level_at(total_points: int) -> int:
-    return (_level(total_points)) * POINTS_PER_LEVEL
-
-
-def _user_seed(user_sub: str) -> int:
-    """Stable integer seed derived from the user's sub claim."""
-    return int(hashlib.md5(user_sub.encode()).hexdigest(), 16) % (2 ** 31)
-
-
-def _mock_ranking(user_sub: str) -> RankingInfo:
-    """Return a mock ranking for the user.
-
-    Produces stable (but fake) results per user_sub. A proper implementation
-    will query settlement data from the SDK when available.
-    """
-    rng = random.Random(_user_seed(user_sub))
-    total_members = rng.randint(20, 120)
-    position = rng.randint(1, max(1, total_members // 3))
-    percentile = max(1, round((position / total_members) * 100))
-    period: str = "week"
-    return RankingInfo(
-        position=position,
-        total_members=total_members,
-        percentile=percentile,
-        period=period,
-    )
-
-
-def _mock_history(user_sub: str) -> CommitmentHistoryResponse:
-    """Return mock commitment history for the user.
-
-    Stable per user_sub. A proper implementation will read FlexibilityCommitment
-    records via the settlement SDK when available.
-    """
-    rng = random.Random(_user_seed(user_sub) + 1)
-    now = datetime.now(timezone.utc)
-    statuses = ["settled", "settled", "settled", "committed", "rejected"]
-    types = ["shift-consumption", "delay-load", "avoid-peak"]
-
-    n = rng.randint(3, 6)
-    items: list[FlexibilityHistoryItem] = []
-    total_earned = 0
-
-    for i in range(n):
-        days_ago = rng.randint(1, 28)
-        committed_at = now - timedelta(days=days_ago, hours=rng.randint(6, 20))
-        period_start = committed_at.replace(minute=0, second=0, microsecond=0)
-        period_end = period_start + timedelta(hours=rng.randint(1, 4))
-        status = rng.choice(statuses)
-        estimated = rng.randint(10, 50)
-        actual = (
-            round(estimated * rng.uniform(0.8, 1.2))
-            if status == "settled"
-            else None
-        )
-        settled_at = (
-            (committed_at + timedelta(hours=rng.randint(2, 8))).isoformat()
-            if status == "settled"
-            else None
-        )
-        impact = round(rng.uniform(0.3, 3.5), 2) if status == "settled" else None
-        if actual:
-            total_earned += actual
-
-        items.append(
-            FlexibilityHistoryItem(
-                id=f"mock-{user_sub[:8]}-{i}",
-                suggestion_type=rng.choice(types),
-                period_start=period_start.isoformat(),
-                period_end=period_end.isoformat(),
-                committed_at=committed_at.isoformat(),
-                settled_at=settled_at,
-                status=status,
-                reward_points_estimated=estimated,
-                reward_points_actual=actual,
-                impact_kwh_actual=impact,
-            )
-        )
-
-    # Sort newest first
-    items.sort(key=lambda x: x.committed_at, reverse=True)
-    return CommitmentHistoryResponse(items=items, total_points_earned=total_earned)
+    return _level(total_points) * POINTS_PER_LEVEL
 
 
 @router.get("/gamification", response_model=GamificationResponse)
-async def gamification(user: UserDep, db: DbDep) -> GamificationResponse:
-    """Return user's total points, level, badges, action count and mock ranking."""
+async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationResponse:
+    """Return user's total points, level, badges, action count and real ranking."""
 
     async with db as session:
-        # Points
         points_row = await session.get(UserPoints, user.sub)
         total_points = points_row.total_points if points_row else 0
         level = _level(total_points)
 
-        # Badges
         badge_rows = (
             await session.execute(
                 select(UserBadge).where(UserBadge.user_id == user.sub)
@@ -146,7 +63,6 @@ async def gamification(user: UserDep, db: DbDep) -> GamificationResponse:
             for b in badge_rows
         ]
 
-        # Actions taken (accepted suggestions)
         actions_taken = (
             await session.execute(
                 select(func.count()).where(
@@ -156,20 +72,83 @@ async def gamification(user: UserDep, db: DbDep) -> GamificationResponse:
             )
         ).scalar() or 0
 
+    # Fetch ranking from rec_gamification_summary via DT values fetcher
+    # Requires the participant's device_id (sensor_id from assets) and today's date.
+    ranking: RankingInfo | None = None
+    try:
+        device_id = ""
+        assets = await dt.participants.assets(user.sub)
+        if assets and assets.items:
+            for asset in assets.items:
+                if asset.sensor_id:
+                    device_id = asset.sensor_id
+                    break
+
+        if device_id:
+            today = datetime.now(timezone.utc).date().isoformat()
+            res = await dt.participants.fetch_values(
+                participant_id=user.sub,
+                fetcher_id="rec_gamification_summary",
+                payload={"device_id": device_id, "date": today},
+            )
+            if res and res.count > 0:
+                d = res.items[0].to_dict()
+                position = int(d.get("rank_position", 1))
+                total = max(int(d.get("total_members", 1)), 1)
+                # "Top X%" = ceil(rank / total * 100): rank 1/10 → Top 10%, rank 10/10 → Top 100%
+                top_pct = math.ceil(position / total * 100)
+                ranking = RankingInfo(
+                    position=position,
+                    total_members=total,
+                    percentile=top_pct,
+                    period="day",
+                )
+    except Exception as exc:
+        logger.warning("rec_gamification_summary fetch failed: %s", exc)
+
     return GamificationResponse(
         total_points=total_points,
         level=level,
         next_level_at=_next_level_at(total_points),
         badges=badges,
         actions_taken=actions_taken,
-        ranking=_mock_ranking(user.sub),
+        ranking=ranking,
     )
 
 
 @router.get("/gamification/history", response_model=CommitmentHistoryResponse)
-async def gamification_history(user: UserDep) -> CommitmentHistoryResponse:
-    """Return commitment history for the user.
+async def gamification_history(user: UserDep, db: DbDep) -> CommitmentHistoryResponse:
+    """Return commitment history from BFF DB (settled asynchronously by DT)."""
 
-    Currently returns mock data; will be replaced by SDK settlement queries.
-    """
-    return _mock_history(user.sub)
+    async with db as session:
+        rows = (
+            await session.execute(
+                select(FlexibilityCommitment)
+                .where(FlexibilityCommitment.user_id == user.sub)
+                .order_by(FlexibilityCommitment.committed_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+
+    items: list[FlexibilityHistoryItem] = []
+    total_earned = 0
+
+    for row in rows:
+        items.append(
+            FlexibilityHistoryItem(
+                id=str(row.id),
+                suggestion_type=row.suggestion_type,
+                period_start=row.period_start.isoformat(),
+                period_end=row.period_end.isoformat(),
+                committed_at=row.committed_at.isoformat(),
+                settled_at=row.settled_at.isoformat() if row.settled_at else None,
+                status=row.status,
+                reward_points_estimated=row.reward_points_estimated,
+                reward_points_actual=row.reward_points_actual,
+                impact_kwh_actual=None,
+            )
+        )
+        if row.reward_points_actual:
+            total_earned += row.reward_points_actual
+
+    return CommitmentHistoryResponse(items=items, total_points_earned=total_earned)

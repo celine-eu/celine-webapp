@@ -1,13 +1,13 @@
 # celine/webapp/api/suggestions.py
 """Suggestions routes — GET /api/suggestions, POST /api/suggestions/{id}/respond."""
-import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from sqlalchemy import select, func
 
+from celine.sdk.openapi.dt.models import UserMembershipSchema
 from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import (
     BadgeItem,
@@ -22,10 +22,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["suggestions"])
 
-# Threshold: community is net-exporting when net_exchange_kwh > this value (kWh surplus)
-EXPORT_THRESHOLD = 0.0
-MAX_SUGGESTIONS = 5
-
 BADGES: dict[str, dict] = {
     "first-shift":    {"icon": "zap",         "min_actions": 1},
     "peak-saver":     {"icon": "sun",         "min_actions": 5},
@@ -36,9 +32,12 @@ BADGES: dict[str, dict] = {
 POINTS_PER_LEVEL = 100
 
 
-def _suggestion_id(suggestion_type: str, period_start: str) -> str:
-    raw = f"{suggestion_type}:{period_start}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+def _level(points: int) -> int:
+    return max(1, points // POINTS_PER_LEVEL + 1)
+
+
+def _next_level_at(points: int) -> int:
+    return _level(points) * POINTS_PER_LEVEL
 
 
 def _float(val: Any, default: float = 0.0) -> float:
@@ -48,68 +47,56 @@ def _float(val: Any, default: float = 0.0) -> float:
         return default
 
 
-def _str_ts(val: Any) -> str:
-    return str(val) if val is not None else ""
-
-
-def _fmt_label(dt_val: datetime) -> str:
-    return dt_val.strftime("%H:%M")
-
-
-def _period_key(start_hour: int) -> str:
-    """Return an i18n key for a time-of-day period."""
-    if 5 <= start_hour < 9:
+def _period_from_hour(hour: int) -> str:
+    """Map a 24h hour to a suggestion_card.period i18n key."""
+    if hour < 5:
+        return "night"
+    if hour < 8:
         return "early_morning"
-    elif 9 <= start_hour < 12:
+    if hour < 11:
         return "morning"
-    elif 12 <= start_hour < 14:
-        return "midday"
-    elif 14 <= start_hour < 17:
-        return "afternoon"
-    elif 17 <= start_hour < 20:
-        return "evening"
-    else:  # 20-23
-        return "night"
-
-
-def _target_period_key(target_hour: int) -> str:
-    """Return an i18n key for the target solar window period."""
-    if target_hour < 9:
-        return "morning"
-    elif target_hour < 12:
+    if hour < 12:
         return "late_morning"
-    elif target_hour < 14:
+    if hour < 14:
         return "midday"
-    elif target_hour < 17:
+    if hour < 17:
         return "afternoon"
-    elif target_hour < 20:
+    if hour < 21:
         return "evening"
-    else:
-        return "night"
+    return "night"
 
 
-def _group_consecutive_hours(
-    hours: list[tuple[datetime, float]]
-) -> list[list[tuple[datetime, float]]]:
-    """Group a chronologically sorted list of (datetime, consumption) into consecutive runs."""
-    if not hours:
-        return []
-    groups: list[list[tuple[datetime, float]]] = [[hours[0]]]
-    for dt, kwh in hours[1:]:
-        prev_dt = groups[-1][-1][0]
-        if (dt - prev_dt) == timedelta(hours=1):
-            groups[-1].append((dt, kwh))
-        else:
-            groups.append([(dt, kwh)])
-    return groups
+# Typical active hours for each period — shown as the "from" clock range.
+# "evening" represents the main household appliance window users should shift away from.
+_PERIOD_CLOCK: dict[str, str] = {
+    "night":         "22:00–06:00",
+    "early_morning": "06:00–08:00",
+    "morning":       "08:00–10:00",
+    "late_morning":  "11:00–12:00",
+    "midday":        "12:00–14:00",
+    "afternoon":     "14:00–17:00",
+    "evening":       "17:00–21:00",
+}
+
+# Minimum impact to surface a suggestion (kWh)
+_MIN_IMPACT_KWH = 0.5
+# Maximum number of suggestions to return
+_MAX_SUGGESTIONS = 2
 
 
-def _level(points: int) -> int:
-    return max(1, points // POINTS_PER_LEVEL + 1)
+def _shift_from(window_start: datetime, today_date: object) -> tuple[str, str]:
+    """Return (from_period, clock_range) for the load to shift AWAY from.
 
+    Tomorrow windows: from=evening (17:00-21:00) → card reads
+      "This evening (17:00–21:00) → Tomorrow morning (09:00)"
 
-def _next_level_at(points: int) -> int:
-    return _level(points) * POINTS_PER_LEVEL
+    Today windows: no "shift from" framing — the window IS the opportunity.
+      Return ("", window_clock) so the card shows "Solar surplus 17:00–20:00".
+    """
+    is_tomorrow = window_start.date() > today_date  # type: ignore[operator]
+    if is_tomorrow:
+        return "evening", _PERIOD_CLOCK["evening"]
+    return "", ""
 
 
 async def _check_and_award_badges(
@@ -127,7 +114,6 @@ async def _check_and_award_badges(
         .scalars()
         .all()
     }
-
     for badge_id, cfg in BADGES.items():
         if badge_id in existing_badge_ids:
             continue
@@ -142,12 +128,16 @@ async def _check_and_award_badges(
 
 @router.get("/suggestions", response_model=list[SuggestionItem])
 async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
-    """Generate ranked load-shifting suggestions from today's forecast (05:00–00:00)."""
+    """Return tomorrow's top load-shift windows from the rec_flexibility pipeline.
 
-    participant = await dt.participants.profile(user.sub)
-    community_id = participant.membership.community.key
+    Only tomorrow's windows are surfaced so every suggestion is always actionable:
+    "Move this evening's load (17:00–21:00) to tomorrow morning (09:00–12:00)".
+    Results are ordered by estimated impact (kWh) and capped at _MAX_SUGGESTIONS.
+    """
+    today_dt = datetime.now(timezone.utc).date()
 
-    device_id: str | None = None
+    # Resolve device_id — required to look up per-device flexibility windows
+    device_id = ""
     try:
         assets = await dt.participants.assets(user.sub)
         if assets and assets.items:
@@ -156,128 +146,57 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
                     device_id = asset.sensor_id
                     break
     except Exception as exc:
-        logger.warning("Failed to fetch assets: %s", exc)
+        logger.warning("Failed to fetch assets for suggestions: %s", exc)
 
-    # Time window: today 05:00 → tomorrow 00:00
-    tz = timezone.utc
-    today_05 = datetime.now(tz).replace(hour=5, minute=0, second=0, microsecond=0)
-    tomorrow_midnight = (today_05 + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-
-    # Fetch REC forecast
-    rec_items: list[dict] = []
-    try:
-        rec_res = await dt.communities.fetch_values(
-            community_id=community_id,
-            fetcher_id="rec_forecast",
-            payload={
-                "start": today_05.isoformat(),
-                "end": tomorrow_midnight.isoformat(),
-            },
-        )
-        if rec_res and rec_res.count > 0:
-            rec_items = [item.to_dict() for item in rec_res.items]
-    except Exception as exc:
-        logger.warning("rec_forecast fetch failed: %s", exc)
-
-    # Fetch community aggregate meter forecast (total_meters_forecast — no device_id)
-    meter_items: list[dict] = []
-    try:
-        meter_res = await dt.participants.fetch_values(
-            participant_id=user.sub,
-            fetcher_id="total_meters_forecast",
-            payload={
-                "start": today_05.isoformat(),
-                "end": tomorrow_midnight.isoformat(),
-            },
-        )
-        if meter_res and meter_res.count > 0:
-            meter_items = [item.to_dict() for item in meter_res.items]
-    except Exception as exc:
-        logger.warning("total_meters_forecast fetch failed: %s", exc)
-
-    # Find net-export windows from total_meters_forecast (net_exchange_kwh > 0 = surplus)
-    # Do NOT use rec_forecast.prediction for this — it is a community aggregate in Wh,
-    # always positive, and not a net-exchange indicator.
-    all_surplus_hours: set[str] = set()
-    for item in meter_items:
-        net_exchange = _float(item.get("net_exchange_kwh"), 0.0)
-        if net_exchange > EXPORT_THRESHOLD:
-            ts = _str_ts(item.get("timestamp") or item.get("datetime") or "")
-            all_surplus_hours.add(ts[:13])
-
-    # Find the best solar target hour (earliest surplus hour, waking hours only)
-    target_ts: datetime | None = None
-    for item in sorted(meter_items, key=lambda r: _str_ts(r.get("timestamp") or r.get("datetime") or "")):
-        net_exchange = _float(item.get("net_exchange_kwh"), 0.0)
-        if net_exchange <= EXPORT_THRESHOLD:
-            continue
-        ts_str = _str_ts(item.get("timestamp") or item.get("datetime") or "")
-        try:
-            candidate = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
-        except ValueError:
-            continue
-        if candidate.hour >= 5:
-            target_ts = candidate
-            break
-
-    if target_ts is None:
+    if not device_id:
         return []
 
-    # Collect non-surplus waking hours sorted chronologically
-    import_hours: list[tuple[datetime, float]] = []
-    for item in meter_items:
-        ts_str = _str_ts(item.get("timestamp") or item.get("datetime") or "")
-        hour_key = ts_str[:13]
-        if hour_key in all_surplus_hours:
-            continue
-        try:
-            source_dt = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
-        except ValueError:
-            continue
-        if source_dt.hour < 5:
-            continue
-        consumption = _float(item.get("consumption_kwh") or item.get("total_consumption_kwh"))
-        import_hours.append((source_dt, consumption))
+    try:
+        res = await dt.participants.fetch_values(
+            participant_id=user.sub,
+            fetcher_id="rec_flexibility_windows",
+            payload={"device_id": device_id},
+        )
+    except Exception as exc:
+        logger.warning("rec_flexibility_windows fetch failed: %s", exc)
+        return []
 
-    # Deduplicate by timestamp (sum consumption if multiple entries share the same datetime)
-    seen: dict[datetime, float] = {}
-    for dt, kwh in import_hours:
-        seen[dt] = seen.get(dt, 0.0) + kwh
-    import_hours = sorted(seen.items(), key=lambda x: x[0])
-
-    groups = _group_consecutive_hours(import_hours)
-
-    # Sort groups by total consumption descending, take top MAX_SUGGESTIONS
-    groups.sort(key=lambda g: sum(kwh for _, kwh in g), reverse=True)
+    if not res or res.count == 0:
+        return []
 
     result: list[SuggestionItem] = []
-    for group in groups[:MAX_SUGGESTIONS]:
-        group_start = group[0][0]
-        group_end = group[-1][0] + timedelta(hours=1)
-        total_consumption = sum(kwh for _, kwh in group)
-        impact_kwh = round(total_consumption * 0.6, 2)
-        reward_points = round(impact_kwh * 10)
-
-        clock_range = f"{_fmt_label(group_start)}–{_fmt_label(group_end)}"
-
-        result.append(
-            SuggestionItem(
-                id=_suggestion_id("shift-consumption", group_start.isoformat()[:16]),
-                suggestion_type="shift-consumption",
-                period_start=group_start.isoformat(),
-                period_end=group_end.isoformat(),
-                from_period=_period_key(group_start.hour),
-                clock_range=clock_range,
-                to_is_tomorrow=group_start.hour >= 17,
-                to_period=_target_period_key(target_ts.hour),
-                to_time=_fmt_label(target_ts),
-                impact_kwh_estimated=impact_kwh,
-                reward_points=reward_points,
-                confidence=0.75,
+    for item in res.items:
+        d: dict[str, Any] = item.to_dict()
+        try:
+            impact = _float(d.get("estimated_kwh"))
+            if impact < _MIN_IMPACT_KWH:
+                continue
+            window_start = datetime.fromisoformat(str(d["window_start"]))
+            window_end = datetime.fromisoformat(str(d["window_end"]))
+            is_tomorrow = window_start.date() > today_dt
+            from_period, from_clock = _shift_from(window_start, today_dt)
+            window_clock = f"{window_start.strftime('%H:%M')}–{window_end.strftime('%H:%M')}"
+            result.append(
+                SuggestionItem(
+                    id=str(d.get("_id", "")),
+                    suggestion_type="shift-consumption",
+                    period_start=window_start.isoformat(),
+                    period_end=window_end.isoformat(),
+                    from_period=from_period,
+                    clock_range=from_clock if from_period else window_clock,
+                    to_is_tomorrow=is_tomorrow,
+                    to_period=_period_from_hour(window_start.hour),
+                    to_time=window_start.strftime("%H:%M"),
+                    impact_kwh_estimated=impact,
+                    reward_points=int(d.get("reward_points_estimated", 0)),
+                    confidence=_float(d.get("confidence"), 0.75),
+                )
             )
-        )
+        except (KeyError, ValueError) as exc:
+            logger.warning("Skipping malformed flexibility window: %s", exc)
 
-    return result
+    # Already ordered by estimated_kwh DESC from the fetcher; cap at max
+    return result[:_MAX_SUGGESTIONS]
 
 
 @router.post(
@@ -288,37 +207,44 @@ async def suggestion_respond(
     body: SuggestionRespondRequest,
     user: UserDep,
     db: DbDep,
+    dt: DTDep,
 ) -> GamificationResponse:
-    """Record a user's response to a suggestion and update points/badges."""
+    """Record a user's response to a suggestion.
 
+    On acceptance: persists a FlexibilityCommitment preference and publishes a
+    flexibility.committed event to the DT (which settles it asynchronously via
+    rec_virtual_consumption_per_device).
+    """
     now = datetime.now(timezone.utc)
 
-    async with db as session:
-        # Lazy-settle any past FlexibilityCommitments where period_end < now
-        past_commitments = (
-            await session.execute(
-                select(FlexibilityCommitment).where(
-                    FlexibilityCommitment.user_id == user.sub,
-                    FlexibilityCommitment.status == "committed",
-                    FlexibilityCommitment.period_end < now,
-                )
-            )
-        ).scalars().all()
+    # Resolve participant context needed for the commitment event
+    community_id = ""
+    device_id = ""
+    try:
+        participant = await dt.participants.profile(user.sub)
+        _m = participant.membership
+        if isinstance(_m, UserMembershipSchema):
+            community_id = _m.community.key
+    except Exception as exc:
+        logger.warning("Failed to fetch participant profile: %s", exc)
 
-        # Get or create points row for settlement
+    if body.response == "accepted":
+        try:
+            assets = await dt.participants.assets(user.sub)
+            if assets and assets.items:
+                for asset in assets.items:
+                    if asset.sensor_id:
+                        device_id = asset.sensor_id
+                        break
+        except Exception as exc:
+            logger.warning("Failed to fetch assets: %s", exc)
+
+    async with db as session:
+        # Get or create points row
         points_row = await session.get(UserPoints, user.sub)
         if points_row is None:
             points_row = UserPoints(user_id=user.sub, total_points=0, level=1)
             session.add(points_row)
-
-        for commitment in past_commitments:
-            # Award estimated points (mock settlement)
-            points_row.total_points += commitment.reward_points_estimated
-            points_row.level = max(1, points_row.total_points // POINTS_PER_LEVEL + 1)
-            points_row.updated_at = now
-            commitment.status = "settled"
-            commitment.settled_at = now
-            commitment.reward_points_actual = commitment.reward_points_estimated
 
         # Upsert interaction
         existing = (
@@ -349,7 +275,7 @@ async def suggestion_respond(
                 )
             )
 
-        # Create FlexibilityCommitment for accepted responses
+        # Record commitment preference (BFF-side preference record)
         pending_commitment: FlexibilityCommitment | None = None
         if body.response == "accepted":
             pending_commitment = FlexibilityCommitment(
@@ -363,7 +289,7 @@ async def suggestion_respond(
             )
             session.add(pending_commitment)
 
-        # Count accepted actions
+        # Count accepted actions for badge evaluation
         actions_taken = (
             await session.execute(
                 select(func.count()).where(
@@ -373,7 +299,6 @@ async def suggestion_respond(
             )
         ).scalar() or 0
 
-        # Add current action if newly accepted
         if body.response == "accepted" and not existing:
             actions_taken += 1
 
@@ -382,11 +307,9 @@ async def suggestion_respond(
         )
         await session.commit()
 
-        # Refresh pending commitment to get generated fields
         if pending_commitment:
             await session.refresh(pending_commitment)
 
-        # Build response
         badge_rows = (
             (
                 await session.execute(
@@ -411,12 +334,32 @@ async def suggestion_respond(
             commitment_item = FlexibilityCommitmentItem(
                 id=str(pending_commitment.id),
                 suggestion_id=pending_commitment.suggestion_id,
-                status=pending_commitment.status,
+                status=cast(Literal["committed", "settled", "rejected"], pending_commitment.status),
                 period_end=pending_commitment.period_end.isoformat(),
                 reward_points_estimated=pending_commitment.reward_points_estimated,
                 reward_points_actual=pending_commitment.reward_points_actual,
                 committed_at=pending_commitment.committed_at.isoformat(),
                 settled_at=pending_commitment.settled_at.isoformat() if pending_commitment.settled_at else None,
+            )
+
+    # Publish commitment event to DT (async settlement via rec_it gold tables)
+    # Failures are logged but do not fail the response — the preference is already persisted.
+    if body.response == "accepted" and pending_commitment and device_id:
+        try:
+            await dt.participants.flexibility_committed(
+                user.sub,
+                commitment_id=str(pending_commitment.id),
+                community_id=community_id,
+                device_id=device_id,
+                window_start=pending_commitment.period_start,
+                window_end=pending_commitment.period_end,
+                reward_points_estimated=pending_commitment.reward_points_estimated,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to publish flexibility_committed event for commitment=%s: %s",
+                pending_commitment.id,
+                exc,
             )
 
     return GamificationResponse(

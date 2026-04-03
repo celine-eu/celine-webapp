@@ -265,7 +265,7 @@ class RankingInfo(BaseModel):
     position: int
     total_members: int
     percentile: int  # top X% (e.g. 10 means "top 10%")
-    period: Literal["week", "month"]
+    period: Literal["day", "week", "month"]
 
 
 class GamificationResponse(BaseModel):
