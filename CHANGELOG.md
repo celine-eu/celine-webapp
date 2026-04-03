@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-04-03)
+
+### Chores
+
+- Optional .env
+  ([`ba42c54`](https://github.com/celine-eu/celine-webapp/commit/ba42c5453471ade912cb78c0f98547e0f75c5983))
+
+- Upgrade celine-sdk to 1.5.0
+  ([`079952e`](https://github.com/celine-eu/celine-webapp/commit/079952ef2c9c2f744c779478feb2f5cc16ba5427))
+
+### Features
+
+- Add CO2 reporting, add commitments history, fix labels translations
+  ([`4113367`](https://github.com/celine-eu/celine-webapp/commit/411336796116b9bf0c0339d9938513bca63f8f25))
+
+- Review api calls
+  ([`c796dfd`](https://github.com/celine-eu/celine-webapp/commit/c796dfda861c9aadd51e91f293f1fc76c35242a2))
+
+
 ## v1.1.1 (2026-03-23)
 
 ### Bug Fixes
