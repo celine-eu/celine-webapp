@@ -3,83 +3,33 @@
 import logging
 import re
 
-import httpx
 from fastapi import APIRouter, HTTPException, Request, status
 
-from celine.webapp.api.deps import UserDep, DbDep
+from celine.webapp.api.deps import UserDep, DbDep, NudgingDep
 from celine.webapp.api.schemas import SettingsModel
 from celine.webapp.db.user_settings import load_user_settings, update_user_settings
-from celine.webapp.settings import settings as app_settings
 
 router = APIRouter(prefix="/api", tags=["settings"])
 logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-async def _get_nudging_preferences(token: str | None) -> tuple[int, bool, str]:
-    if not token or not app_settings.nudging_api_url:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Nudging API not configured",
-        )
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(
-            f"{app_settings.nudging_api_url}/preferences/me",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        response.raise_for_status()
-        data = response.json()
-        max_per_day = int(data["max_per_day"])
-        if max_per_day < 1 or max_per_day > 10:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Invalid notification limit returned by nudging service",
-            )
-        return (
-            max_per_day,
-            bool(data.get("channel_email", False)),
-            str(data.get("email", "") or ""),
-        )
-
-
-async def _update_nudging_preferences(
-    token: str | None,
-    max_per_day: int,
-    channel_email: bool,
-    email: str,
-) -> None:
-    if not token or not app_settings.nudging_api_url:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Nudging API not configured",
-        )
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.put(
-            f"{app_settings.nudging_api_url}/preferences/me",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "max_per_day": max_per_day,
-                "channel_email": channel_email,
-                "email": email,
-            },
-        )
-        response.raise_for_status()
-
-
 @router.get("/settings", response_model=SettingsModel)
 async def get_settings(
     user: UserDep,
     db: DbDep,
+    nudging_client: NudgingDep,
 ) -> SettingsModel:
     """Get user settings."""
-    settings = await load_user_settings(user.sub, db)
+    user_settings = await load_user_settings(user.sub, db)
     try:
-        notification_limit, email_enabled, email = await _get_nudging_preferences(user.token)
-    except HTTPException:
-        raise
-    except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+        prefs = await nudging_client.get_preferences()
+        notification_limit = int(prefs.max_per_day)
+        if notification_limit < 1 or notification_limit > 10:
+            notification_limit = 3
+        email_enabled = bool(getattr(prefs, "channel_email", False))
+        email = str(getattr(prefs, "email", "") or "")
+    except Exception as exc:
         logger.error("Could not load nudging preferences for %s: %s", user.sub, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -87,12 +37,12 @@ async def get_settings(
         ) from exc
 
     return SettingsModel(
-        simple_mode=settings.simple_mode,
-        font_scale=settings.font_scale,
+        simple_mode=user_settings.simple_mode,
+        font_scale=user_settings.font_scale,
         notifications={
             "email_enabled": email_enabled,
             "email": email,
-            "webpush_enabled": settings.webpush_enabled,
+            "webpush_enabled": user_settings.webpush_enabled,
             "limit": notification_limit,
         },
     )
@@ -103,6 +53,7 @@ async def update_settings(
     request: Request,
     user: UserDep,
     db: DbDep,
+    nudging_client: NudgingDep,
 ) -> SettingsModel:
     """Update user settings."""
 
@@ -126,13 +77,10 @@ async def update_settings(
     )
 
     try:
-        await _update_nudging_preferences(
-            user.token,
-            model.notifications.limit,
-            model.notifications.email_enabled,
-            model.notifications.email,
+        await nudging_client.update_preferences(
+            max_per_day=model.notifications.limit,
         )
-    except httpx.HTTPError as exc:
+    except Exception as exc:
         logger.error("Could not update nudging preferences for %s: %s", user.sub, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

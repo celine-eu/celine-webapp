@@ -240,6 +240,8 @@ class SuggestionItem(BaseModel):
 class SuggestionRespondRequest(BaseModel):
     response: Literal["accepted", "declined"]
     reward_points: Optional[int] = None
+    period_start: Optional[str] = None  # ISO datetime of window start
+    period_end: Optional[str] = None    # ISO datetime of window end
 
 
 # ─── Gamification schemas ─────────────────────────────────────────────────────
@@ -253,7 +255,7 @@ class BadgeItem(BaseModel):
 class FlexibilityCommitmentItem(BaseModel):
     id: str
     suggestion_id: str
-    status: Literal["committed", "settled", "rejected"]
+    status: Literal["committed", "settled", "rejected", "cancelled"]
     period_end: str
     reward_points_estimated: int
     reward_points_actual: Optional[int] = None
@@ -287,7 +289,7 @@ class FlexibilityHistoryItem(BaseModel):
     period_end: str
     committed_at: str
     settled_at: Optional[str] = None
-    status: Literal["committed", "settled", "rejected"]
+    status: Literal["committed", "settled", "rejected", "cancelled"]
     reward_points_estimated: int
     reward_points_actual: Optional[int] = None
     impact_kwh_actual: Optional[float] = None

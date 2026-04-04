@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, func
 
 from celine.sdk.openapi.dt.models import UserMembershipSchema
@@ -127,7 +127,7 @@ async def _check_and_award_badges(
 
 
 @router.get("/suggestions", response_model=list[SuggestionItem])
-async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
+async def suggestions(user: UserDep, db: DbDep, dt: DTDep) -> list[SuggestionItem]:
     """Return tomorrow's top load-shift windows from the rec_flexibility pipeline.
 
     Only tomorrow's windows are surfaced so every suggestion is always actionable:
@@ -151,6 +151,19 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
     if not device_id:
         return []
 
+    # Load suggestion_ids the user has already committed to (status=committed)
+    committed_ids: set[str] = set()
+    async with db as session:
+        rows = (
+            await session.execute(
+                select(FlexibilityCommitment.suggestion_id).where(
+                    FlexibilityCommitment.user_id == user.sub,
+                    FlexibilityCommitment.status == "committed",
+                )
+            )
+        ).scalars().all()
+        committed_ids = set(rows)
+
     try:
         res = await dt.participants.fetch_values(
             participant_id=user.sub,
@@ -168,6 +181,9 @@ async def suggestions(user: UserDep, dt: DTDep) -> list[SuggestionItem]:
     for item in res.items:
         d: dict[str, Any] = item.to_dict()
         try:
+            window_id = str(d.get("_id", ""))
+            if window_id in committed_ids:
+                continue
             impact = _float(d.get("estimated_kwh"))
             if impact < _MIN_IMPACT_KWH:
                 continue
@@ -278,12 +294,18 @@ async def suggestion_respond(
         # Record commitment preference (BFF-side preference record)
         pending_commitment: FlexibilityCommitment | None = None
         if body.response == "accepted":
+            try:
+                window_start = datetime.fromisoformat(body.period_start) if body.period_start else now
+                window_end = datetime.fromisoformat(body.period_end) if body.period_end else now + timedelta(hours=1)
+            except (ValueError, TypeError):
+                window_start = now
+                window_end = now + timedelta(hours=1)
             pending_commitment = FlexibilityCommitment(
                 user_id=user.sub,
                 suggestion_id=suggestion_id,
                 suggestion_type="shift-consumption",
-                period_start=now,
-                period_end=now + timedelta(hours=1),
+                period_start=window_start,
+                period_end=window_end,
                 status="committed",
                 reward_points_estimated=reward_points,
             )
@@ -334,7 +356,7 @@ async def suggestion_respond(
             commitment_item = FlexibilityCommitmentItem(
                 id=str(pending_commitment.id),
                 suggestion_id=pending_commitment.suggestion_id,
-                status=cast(Literal["committed", "settled", "rejected"], pending_commitment.status),
+                status=cast(Literal["committed", "settled", "rejected", "cancelled"], pending_commitment.status),
                 period_end=pending_commitment.period_end.isoformat(),
                 reward_points_estimated=pending_commitment.reward_points_estimated,
                 reward_points_actual=pending_commitment.reward_points_actual,
@@ -351,8 +373,8 @@ async def suggestion_respond(
                 commitment_id=str(pending_commitment.id),
                 community_id=community_id,
                 device_id=device_id,
-                window_start=pending_commitment.period_start,
-                window_end=pending_commitment.period_end,
+                window_start=window_start,
+                window_end=window_end,
                 reward_points_estimated=pending_commitment.reward_points_estimated,
             )
         except Exception as exc:
@@ -370,3 +392,29 @@ async def suggestion_respond(
         actions_taken=actions_taken,
         pending_commitment=commitment_item,
     )
+
+
+@router.delete("/commitments/{commitment_id}", status_code=204)
+async def cancel_commitment(
+    commitment_id: str,
+    user: UserDep,
+    db: DbDep,
+) -> None:
+    """Cancel a pending flexibility commitment."""
+    async with db as session:
+        row = (
+            await session.execute(
+                select(FlexibilityCommitment).where(
+                    FlexibilityCommitment.id == commitment_id,
+                    FlexibilityCommitment.user_id == user.sub,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if row is None:
+            raise HTTPException(status_code=404, detail="Commitment not found")
+        if row.status != "committed":
+            raise HTTPException(status_code=409, detail="Commitment is not cancellable")
+
+        row.status = "cancelled"
+        await session.commit()

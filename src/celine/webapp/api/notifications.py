@@ -30,7 +30,7 @@ async def list_notifications(
 ) -> list[NotificationItem]:
     """List user notifications."""
 
-    res = await nudging_client.list_notifications(token=user.token)
+    res = await nudging_client.list_notifications()
 
     return [
         NotificationItem(
@@ -82,11 +82,11 @@ async def mark_all_notifications_read(
     The nudging service has no bulk-mark-read endpoint, so we fetch the
     unread list and fan out individual mark_read calls concurrently.
     """
-    unread = await nudging_client.list_notifications(unread_only=True, token=user.token)
+    unread = await nudging_client.list_notifications(unread_only=True)
 
     if unread:
         await asyncio.gather(
-            *[nudging_client.mark_read(n.id, token=user.token) for n in unread]
+            *[nudging_client.mark_read(n.id) for n in unread]
         )
 
     return SuccessResponse()
@@ -99,7 +99,7 @@ async def mark_notification_read(
     nudging_client: NudgingDep,
 ) -> SuccessResponse:
     """Mark a single notification as read. Idempotent."""
-    result = await nudging_client.mark_read(notification_id, token=user.token)
+    result = await nudging_client.mark_read(notification_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Notification not found")
     return SuccessResponse()
@@ -134,7 +134,6 @@ async def webpush_subscribe(
                 ),
             )
         ),
-        token=user.token,
     )
 
     await update_user_settings(
@@ -155,7 +154,6 @@ async def webpush_unsubscribe(
 ) -> SuccessResponse:
     await nudging_client.unsubscribe(
         body=UnsubscribeRequest(endpoint=payload.endpoint),
-        token=user.token,
     )
 
     await update_user_settings(
