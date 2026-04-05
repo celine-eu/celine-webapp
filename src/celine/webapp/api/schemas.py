@@ -53,6 +53,7 @@ class OverviewResponse(BaseModel):
     user: dict
     rec: dict
     trend: list[dict]
+    user_trend: list[dict] = []
     devices: list[dict]
 
 
@@ -270,6 +271,11 @@ class RankingInfo(BaseModel):
     period: Literal["day", "week", "month"]
 
 
+class DailyPointsItem(BaseModel):
+    date: str   # YYYY-MM-DD
+    points: int
+
+
 class GamificationResponse(BaseModel):
     total_points: int
     level: int
@@ -278,6 +284,7 @@ class GamificationResponse(BaseModel):
     actions_taken: int
     pending_commitment: Optional[FlexibilityCommitmentItem] = None
     ranking: Optional[RankingInfo] = None
+    daily_points: list[DailyPointsItem] = []
 
 
 # ─── Commitment history schemas ────────────────────────────────────────────────

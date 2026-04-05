@@ -12,6 +12,7 @@ from celine.webapp.db import get_db
 from celine.sdk.auth import JwtUser
 from celine.sdk.auth.static import StaticTokenProvider
 from celine.sdk.dt import DTClient
+from celine.sdk.flexibility import FlexibilityClient
 from celine.sdk.nudging.client import NudgingClient
 from celine.sdk.rec_registry import RecRegistryUserClient
 
@@ -128,9 +129,22 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def get_flexibility_client(request: Request) -> FlexibilityClient:
+    """Create a FlexibilityClient forwarding the caller's JWT."""
+    if not settings.flexibility_api_url:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Flexibility API not configured")
+    raw_token = get_raw_token(request)
+    return FlexibilityClient(
+        base_url=settings.flexibility_api_url,
+        default_token=raw_token,
+    )
+
+
 # Type aliases for dependency injection
 UserDep = Annotated[JwtUser, Depends(get_user_from_request)]
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 DTDep = Annotated[DTClient, Depends(get_dt_client)]
+FlexibilityDep = Annotated[FlexibilityClient, Depends(get_flexibility_client)]
 NudgingDep = Annotated[NudgingClient, Depends(get_nudging_client)]
 RegistryDep = Annotated[RecRegistryUserClient, Depends(get_registry_client)]

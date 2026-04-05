@@ -185,6 +185,35 @@ async def overview(
             )
 
     # -------------------------------------------------------------------------
+    # Fetch per-device trend using rec_virtual_consumption_per_device_15m
+    # -------------------------------------------------------------------------
+    user_trend: list[dict] = []
+    if len(device_ids) > 0:
+        try:
+            device_id = device_ids[0]
+            user_trend_response = await dt.participants.fetch_values(
+                participant_id=participant_id,
+                fetcher_id="rec_virtual_consumption_per_device_15m",
+                payload={
+                    "device_id": device_id,
+                    "start": trend_start.isoformat(),
+                    "end": now.isoformat(),
+                },
+            )
+            if user_trend_response and user_trend_response.count > 0:
+                user_trend = _build_user_daily_trend(
+                    [item.to_dict() for item in user_trend_response.items],
+                    trend_start,
+                    now,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch user trend for participant %s: %s",
+                participant_id,
+                exc,
+            )
+
+    # -------------------------------------------------------------------------
     # Fetch REC-level self-consumption using rec_self_consumption value fetcher
     # -------------------------------------------------------------------------
     if community_id:
@@ -254,8 +283,71 @@ async def overview(
         user=user_data,
         rec=rec_data,
         trend=trend,
+        user_trend=user_trend,
         devices=devices,
     )
+
+
+def _build_user_daily_trend(
+    items: list[dict],
+    start: datetime,
+    end: datetime,
+) -> list[dict]:
+    """Build daily user trend from 15-min rec_virtual_consumption_per_device_15m data.
+
+    Maps: consumption_kwh → consumption_kwh, virtual_consumption_kwh → self_consumption_kwh.
+    production_kwh is not available in this table (set to None).
+    """
+    from collections import defaultdict
+
+    num_days = max(1, (end.date() - start.date()).days + 1)
+
+    daily_data: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"consumption_kwh": 0.0, "self_consumption_kwh": 0.0}
+    )
+
+    for item in items:
+        ts_str = item.get("ts")
+        if not ts_str:
+            continue
+        try:
+            if isinstance(ts_str, str):
+                ts = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
+            else:
+                ts = ts_str
+            date_key = ts.date().isoformat()
+        except (ValueError, AttributeError):
+            continue
+
+        daily_data[date_key]["consumption_kwh"] += _safe_float(item.get("consumption_kwh"))
+        daily_data[date_key]["self_consumption_kwh"] += _safe_float(
+            item.get("virtual_consumption_kwh")
+        )
+
+    trend = []
+    base = end.date()
+    for d in range(num_days):
+        day = (base - timedelta(days=(num_days - 1 - d))).isoformat()
+        if day in daily_data:
+            trend.append(
+                {
+                    "date": day,
+                    "production_kwh": None,
+                    "consumption_kwh": daily_data[day]["consumption_kwh"],
+                    "self_consumption_kwh": daily_data[day]["self_consumption_kwh"],
+                }
+            )
+        else:
+            trend.append(
+                {
+                    "date": day,
+                    "production_kwh": None,
+                    "consumption_kwh": None,
+                    "self_consumption_kwh": None,
+                }
+            )
+
+    return trend
 
 
 def _build_daily_trend(

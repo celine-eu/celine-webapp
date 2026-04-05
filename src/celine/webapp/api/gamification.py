@@ -11,11 +11,12 @@ from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import (
     BadgeItem,
     CommitmentHistoryResponse,
+    DailyPointsItem,
     FlexibilityHistoryItem,
     GamificationResponse,
     RankingInfo,
 )
-from celine.webapp.db.models import FlexibilityCommitment, UserPoints, UserBadge, SuggestionInteraction
+from celine.webapp.db.models import FlexibilityCommitment, UserBadge, SuggestionInteraction
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +42,12 @@ def _next_level_at(total_points: int) -> int:
 
 @router.get("/gamification", response_model=GamificationResponse)
 async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationResponse:
-    """Return user's total points, level, badges, action count and real ranking."""
+    """Return user's total points, level, badges, action count and real ranking.
 
+    Total points are derived from rec_participant_points (dbt gold table) which
+    sums ALL virtual self-consumption — base loads and flexibility windows alike.
+    """
     async with db as session:
-        points_row = await session.get(UserPoints, user.sub)
-        total_points = points_row.total_points if points_row else 0
-        level = _level(total_points)
-
         badge_rows = (
             await session.execute(
                 select(UserBadge).where(UserBadge.user_id == user.sub)
@@ -72,19 +72,44 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
             )
         ).scalar() or 0
 
-    # Fetch ranking from rec_gamification_summary via DT values fetcher
-    # Requires the participant's device_id (sensor_id from assets) and today's date.
-    ranking: RankingInfo | None = None
+    # Resolve participant's device_id once; used for both points and ranking.
+    device_id = ""
     try:
-        device_id = ""
         assets = await dt.participants.assets(user.sub)
         if assets and assets.items:
             for asset in assets.items:
                 if asset.sensor_id:
                     device_id = asset.sensor_id
                     break
+    except Exception as exc:
+        logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
 
-        if device_id:
+    # Total points + daily breakdown from rec_participant_points.
+    # Covers ALL virtual self-consumption (base loads + flexibility windows).
+    total_points = 0
+    daily_points: list[DailyPointsItem] = []
+    if device_id:
+        try:
+            pts_res = await dt.participants.fetch_values(
+                participant_id=user.sub,
+                fetcher_id="rec_participant_points",
+                payload={"device_id": device_id},
+            )
+            if pts_res and pts_res.count > 0:
+                for item in pts_res.items:
+                    d = item.to_dict()
+                    pts = int(d.get("daily_points") or 0)
+                    total_points += pts
+                    daily_points.append(
+                        DailyPointsItem(date=str(d.get("ts_date", "")), points=pts)
+                    )
+        except Exception as exc:
+            logger.warning("rec_participant_points fetch failed: %s", exc)
+
+    # Community ranking from rec_gamification_summary (today's snapshot).
+    ranking: RankingInfo | None = None
+    if device_id:
+        try:
             today = datetime.now(timezone.utc).date().isoformat()
             res = await dt.participants.fetch_values(
                 participant_id=user.sub,
@@ -95,7 +120,6 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
                 d = res.items[0].to_dict()
                 position = int(d.get("rank_position", 1))
                 total = max(int(d.get("total_members", 1)), 1)
-                # "Top X%" = ceil(rank / total * 100): rank 1/10 → Top 10%, rank 10/10 → Top 100%
                 top_pct = math.ceil(position / total * 100)
                 ranking = RankingInfo(
                     position=position,
@@ -103,22 +127,23 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
                     percentile=top_pct,
                     period="day",
                 )
-    except Exception as exc:
-        logger.warning("rec_gamification_summary fetch failed: %s", exc)
+        except Exception as exc:
+            logger.warning("rec_gamification_summary fetch failed: %s", exc)
 
     return GamificationResponse(
         total_points=total_points,
-        level=level,
+        level=_level(total_points),
         next_level_at=_next_level_at(total_points),
         badges=badges,
         actions_taken=actions_taken,
         ranking=ranking,
+        daily_points=daily_points,
     )
 
 
 @router.get("/gamification/history", response_model=CommitmentHistoryResponse)
 async def gamification_history(user: UserDep, db: DbDep) -> CommitmentHistoryResponse:
-    """Return commitment history from BFF DB (settled asynchronously by DT)."""
+    """Return commitment history from BFF DB (settled asynchronously by flexibility-api)."""
 
     async with db as session:
         rows = (

@@ -56,8 +56,10 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
     community_id = participant.membership.community.key
 
     now = datetime.now(timezone.utc)
-    today = now
-    week_end = now + timedelta(days=7)
+    # Anchor to today midnight UTC so the daily query always includes today's record
+    # regardless of what time of day it is.
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = today_midnight + timedelta(days=8)  # inclusive 7-day window
     today_05 = now.replace(hour=5, minute=0, second=0, microsecond=0)
     tomorrow_midnight = (today_05 + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -79,7 +81,7 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
                 fetcher_id="weather_daily",
                 payload={
                     "location_id": LOCATION_ID,
-                    "start": today.isoformat(),
+                    "start": today_midnight.isoformat(),
                     "end": week_end.isoformat(),
                 },
             )

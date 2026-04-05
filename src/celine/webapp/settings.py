@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     digital_twin_api_url: Optional[str] = "http://host.docker.internal:8002"
     nudging_api_url: Optional[str] = "http://host.docker.internal:8016"
     rec_registry_url: Optional[str] = "http://host.docker.internal:8004"
+    flexibility_api_url: Optional[str] = "http://host.docker.internal:8017"
 
 
 # Global settings instance
