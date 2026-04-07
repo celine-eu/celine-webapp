@@ -15,7 +15,7 @@ from celine.webapp.api.schemas import (
     SuggestionItem,
     SuggestionRespondRequest,
 )
-from celine.webapp.db.models import SuggestionInteraction, UserBadge, UserPoints
+from celine.webapp.db.models import SuggestionInteraction, UserBadge
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +29,6 @@ BADGES: dict[str, dict] = {
 }
 
 POINTS_PER_LEVEL = 100
-
-
-def _level(points: int) -> int:
-    return max(1, points // POINTS_PER_LEVEL + 1)
-
-
-def _next_level_at(points: int) -> int:
-    return _level(points) * POINTS_PER_LEVEL
 
 
 
@@ -120,11 +112,6 @@ async def suggestion_respond(
             )
 
     async with db as session:
-        points_row = await session.get(UserPoints, user.sub)
-        if points_row is None:
-            points_row = UserPoints(user_id=user.sub, total_points=0, level=1)
-            session.add(points_row)
-
         existing = (
             await session.execute(
                 select(SuggestionInteraction).where(
@@ -163,9 +150,7 @@ async def suggestion_respond(
         if body.response == "accepted" and not existing:
             actions_taken += 1
 
-        await _check_and_award_badges(
-            session, user.sub, points_row.total_points, actions_taken
-        )
+        await _check_and_award_badges(session, user.sub, 0, actions_taken)
         await session.commit()
 
         badge_rows = (
@@ -200,10 +185,12 @@ async def suggestion_respond(
             settled_at=None,
         )
 
+    # total_points/level are omitted here — client should reload from GET /gamification
+    # for accurate totals (base points from rec_participant_points + active from flexibility-api).
     return GamificationResponse(
-        total_points=points_row.total_points,
-        level=points_row.level,
-        next_level_at=_next_level_at(points_row.total_points),
+        total_points=0,
+        level=1,
+        next_level_at=POINTS_PER_LEVEL,
         badges=badges,
         actions_taken=actions_taken,
         pending_commitment=commitment_item,

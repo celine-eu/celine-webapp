@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Float, Boolean, DateTime, Text, JSON, Integer, Uuid
+from sqlalchemy import String, Float, Boolean, DateTime, Integer, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -72,19 +72,6 @@ class SuggestionInteraction(Base):
     reward_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
-class UserPoints(Base):
-    """Gamification points per user."""
-
-    __tablename__ = "user_points"
-
-    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    total_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-
 class UserBadge(Base):
     """Badges earned by users."""
 
@@ -96,23 +83,3 @@ class UserBadge(Base):
     earned_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-
-
-class FlexibilityCommitment(Base):
-    """Records user commitments to flexibility suggestions."""
-
-    __tablename__ = "flexibility_commitments"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    suggestion_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    suggestion_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    committed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="committed")
-    reward_points_estimated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    reward_points_actual: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
