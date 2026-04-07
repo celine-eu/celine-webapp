@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-04-07)
+
+### Chores
+
+- Upgrade celine-sdk to 1.6.0
+  ([`e8ee889`](https://github.com/celine-eu/celine-webapp/commit/e8ee88935da463257320362d743e8bcc1a708634))
+
+### Features
+
+- Add flex api
+  ([`ba3e614`](https://github.com/celine-eu/celine-webapp/commit/ba3e614bd9febeb456e3de5f125e83a76b1b2bdd))
+
+- Delegate to dt the nudging on window opening
+  ([`ad50f76`](https://github.com/celine-eu/celine-webapp/commit/ad50f762a963554882473828be5db0438afce71d))
+
+- Use flexibility api for gamification points
+  ([`0129711`](https://github.com/celine-eu/celine-webapp/commit/01297115a6affe95e246e90a31ebc8df3a785960))
+
+
 ## v1.2.0 (2026-04-03)
 
 ### Chores
