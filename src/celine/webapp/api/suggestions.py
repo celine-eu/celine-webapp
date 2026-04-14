@@ -95,21 +95,20 @@ async def suggestion_respond(
     now = datetime.now(timezone.utc)
     reward_points = body.reward_points if body.reward_points is not None else 10
 
-    # Delegate commitment creation and MQTT to flexibility-api
+    # Delegate commitment creation/rejection and MQTT to flexibility-api
     flex_response = None
-    if body.response == "accepted":
-        try:
-            flex_response = await flexibility.respond_to_suggestion(
-                suggestion_id,
-                body.response,
-                reward_points=reward_points,
-                period_start=body.period_start,
-                period_end=body.period_end,
-            )
-        except Exception as exc:
-            logger.warning(
-                "flexibility-api respond failed for suggestion=%s: %s", suggestion_id, exc
-            )
+    try:
+        flex_response = await flexibility.respond_to_suggestion(
+            suggestion_id,
+            body.response,
+            reward_points=reward_points,
+            period_start=body.period_start,
+            period_end=body.period_end,
+        )
+    except Exception as exc:
+        logger.warning(
+            "flexibility-api respond failed for suggestion=%s: %s", suggestion_id, exc
+        )
 
     async with db as session:
         existing = (
