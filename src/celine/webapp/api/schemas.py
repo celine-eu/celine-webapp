@@ -70,6 +70,15 @@ class NotificationItem(BaseModel):
     deleted_at: Optional[str] = None
 
 
+class NotificationKindSettingModel(BaseModel):
+    kind: str
+    label: str
+    description: str
+    cadence: str
+    enabled: bool = True
+    editable: bool = True
+
+
 # Settings
 class NotificationSettingsModel(BaseModel):
     """Notification settings."""
@@ -78,6 +87,7 @@ class NotificationSettingsModel(BaseModel):
     email: str = ""
     webpush_enabled: bool = False
     limit: int = Field(default=5, ge=1, le=10)
+    kinds: list[NotificationKindSettingModel] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_email_notifications(self) -> "NotificationSettingsModel":
