@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v1.4.0 (2026-04-15)
+
+### Bug Fixes
+
+- Add accept/reject on flexiblity opportunity
+  ([`0df7e0c`](https://github.com/celine-eu/celine-webapp/commit/0df7e0cddf923884e7159ecbb8bf7fdc5a51f0a7))
+
+### Chores
+
+- Upgrade celine-sdk to 1.7.0
+  ([`206a1a2`](https://github.com/celine-eu/celine-webapp/commit/206a1a2154e655a61917102b28b7300949443015))
+
+- Upgrade celine-sdk to 1.8.0
+  ([`bdaee07`](https://github.com/celine-eu/celine-webapp/commit/bdaee074bbd8e30b31057019fad557840eedb3ad))
+
+### Features
+
+- Give the user the possibility to enable and disable notification
+  ([`92719e6`](https://github.com/celine-eu/celine-webapp/commit/92719e6e85fc4edcccfff12c810cd2e42cad7998))
+
+
 ## v1.3.0 (2026-04-07)
 
 ### Chores
