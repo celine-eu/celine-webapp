@@ -255,6 +255,13 @@ class SuggestionRespondRequest(BaseModel):
     period_end: Optional[str] = None    # ISO datetime of window end
 
 
+class SuggestionReminderRequest(BaseModel):
+    period_start: str
+    period_end: str
+    reward_points: int
+    lang: Optional[str] = None
+
+
 # ─── Gamification schemas ─────────────────────────────────────────────────────
 
 class BadgeItem(BaseModel):

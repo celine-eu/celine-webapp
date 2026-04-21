@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     nudging_api_url: Optional[str] = "http://host.docker.internal:8016"
     rec_registry_url: Optional[str] = "http://host.docker.internal:8004"
     flexibility_api_url: Optional[str] = "http://host.docker.internal:8017"
+    nudging_ingest_scope: str = "nudging.ingest"
 
 
 # Global settings instance

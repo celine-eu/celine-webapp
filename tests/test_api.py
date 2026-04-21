@@ -46,6 +46,10 @@ def test_get_settings(client: TestClient, auth_headers: dict):
     assert "font_scale" in data
     assert "notifications" in data
     assert data["notifications"]["limit"] == 5
+    assert len(data["notifications"]["kinds"]) == 3
+    assert data["notifications"]["kinds"][0]["kind"] == "meter_anomaly"
+    assert data["notifications"]["kinds"][2]["kind"] == "extr_event"
+    assert data["notifications"]["kinds"][2]["editable"] is False
 
 
 def test_update_settings(client: TestClient, auth_headers: dict):
@@ -53,7 +57,37 @@ def test_update_settings(client: TestClient, auth_headers: dict):
     new_settings = {
         "simple_mode": True,
         "font_scale": 1.2,
-        "notifications": {"email_enabled": True, "limit": 8}
+        "notifications": {
+            "email_enabled": True,
+            "email": "test@example.com",
+            "webpush_enabled": True,
+            "limit": 8,
+            "kinds": [
+                {
+                    "kind": "meter_anomaly",
+                    "label": "Sensor and meter anomalies",
+                    "description": "Alerts for faulty devices.",
+                    "cadence": "At most once per day.",
+                    "enabled": True,
+                },
+                {
+                    "kind": "price_up",
+                    "label": "Price increase alerts",
+                    "description": "Alerts when prices rise.",
+                    "cadence": "At most once per day.",
+                    "enabled": False,
+                    "editable": True,
+                },
+                {
+                    "kind": "extr_event",
+                    "label": "Weather alerts",
+                    "description": "Relevant weather alerts for the community.",
+                    "cadence": "When a relevant alert is issued.",
+                    "enabled": True,
+                    "editable": False,
+                },
+            ],
+        },
     }
     
     response = client.put(
@@ -68,6 +102,10 @@ def test_update_settings(client: TestClient, auth_headers: dict):
     assert data["font_scale"] == 1.2
     assert data["notifications"]["email_enabled"] is True
     assert data["notifications"]["limit"] == 8
+    assert data["notifications"]["webpush_enabled"] is True
+    assert data["notifications"]["kinds"][1]["enabled"] is False
+    assert data["notifications"]["kinds"][2]["enabled"] is True
+    assert data["notifications"]["kinds"][2]["editable"] is False
 
 
 def test_overview_endpoint(client: TestClient, auth_headers: dict):

@@ -3,19 +3,24 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
+import httpx
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, func
 
+from celine.sdk.auth.oidc import OidcClientCredentialsProvider
 from celine.webapp.api.deps import DbDep, FlexibilityDep, UserDep
 from celine.webapp.api.schemas import (
     BadgeItem,
     FlexibilityCommitmentItem,
     GamificationResponse,
     SuggestionItem,
+    SuggestionReminderRequest,
     SuggestionRespondRequest,
+    SuccessResponse,
 )
 from celine.webapp.db.models import SuggestionInteraction, UserBadge
+from celine.webapp.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +67,7 @@ async def _check_and_award_badges(
 @router.get("/suggestions", response_model=list[SuggestionItem])
 async def suggestions(
     user: UserDep,
+    db: DbDep,
     flexibility: FlexibilityDep,
 ) -> list[SuggestionItem]:
     """Return load-shift windows for the authenticated user.
@@ -71,10 +77,146 @@ async def suggestions(
     """
     try:
         items = await flexibility.list_suggestions()
-        return [SuggestionItem(**item.model_dump()) for item in items]
+        async with db as session:
+            hidden_ids = set(
+                (
+                    await session.execute(
+                        select(SuggestionInteraction.suggestion_id).where(
+                            SuggestionInteraction.user_id == user.sub
+                        )
+                    )
+                ).scalars().all()
+            )
+        return [
+            SuggestionItem(**item.model_dump())
+            for item in items
+            if item.id not in hidden_ids
+        ]
     except Exception as exc:
         logger.warning("Failed to fetch suggestions from flexibility-api: %s", exc)
         return []
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid datetime: {value}") from exc
+
+
+async def _schedule_flexibility_reminder(
+    *,
+    suggestion_id: str,
+    user_id: str,
+    period_start: datetime,
+    period_end: datetime,
+    reward_points: int,
+    lang: str | None,
+) -> None:
+    if not settings.nudging_api_url:
+        raise HTTPException(status_code=503, detail="Nudging API not configured")
+
+    client_id = settings.oidc.client_id
+    client_secret = settings.oidc.client_secret
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="OIDC client credentials not configured for nudging reminders",
+        )
+
+    provider = OidcClientCredentialsProvider(
+        base_url=settings.oidc.base_url,
+        client_id=client_id,
+        client_secret=client_secret,
+        scope=settings.nudging_ingest_scope,
+        verify_ssl=settings.oidc.verify_ssl,
+    )
+    access_token = await provider.get_token()
+    trigger_at = period_start - timedelta(minutes=10)
+    facts = {
+        "facts_version": "1.0",
+        "scenario": "flexibility_reminder",
+        "suggestion_id": suggestion_id,
+        "window_start": period_start.strftime("%H:%M"),
+        "window_end": period_end.strftime("%H:%M"),
+        "reward_points_estimated": reward_points,
+        "period": period_start.date().isoformat(),
+        "lang": (lang or "en").split("-")[0],
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{settings.nudging_api_url.rstrip('/')}/admin/scheduled-events",
+            headers={"Authorization": f"Bearer {access_token.access_token}"},
+            json={
+                "event_type": "flexibility_reminder",
+                "user_id": user_id,
+                "external_key": f"flexibility-reminder:{user_id}:{suggestion_id}",
+                "trigger_at": trigger_at.astimezone(timezone.utc).isoformat(),
+                "facts": facts,
+            },
+        )
+    if response.status_code not in {200, 201}:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to schedule reminder with nudging tool",
+        )
+
+
+@router.post("/suggestions/{suggestion_id}/remind", response_model=SuccessResponse)
+async def suggestion_remind(
+    suggestion_id: str,
+    body: SuggestionReminderRequest,
+    user: UserDep,
+    db: DbDep,
+) -> SuccessResponse:
+    period_start = _parse_iso_datetime(body.period_start)
+    period_end = _parse_iso_datetime(body.period_end)
+    if period_end <= period_start:
+        raise HTTPException(status_code=422, detail="period_end must be after period_start")
+
+    await _schedule_flexibility_reminder(
+        suggestion_id=suggestion_id,
+        user_id=user.sub,
+        period_start=period_start,
+        period_end=period_end,
+        reward_points=body.reward_points,
+        lang=body.lang,
+    )
+
+    now = datetime.now(timezone.utc)
+    async with db as session:
+        existing = (
+            await session.execute(
+                select(SuggestionInteraction).where(
+                    SuggestionInteraction.user_id == user.sub,
+                    SuggestionInteraction.suggestion_id == suggestion_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if existing:
+            existing.response = "reminded"
+            existing.period_start = period_start
+            existing.period_end = period_end
+            existing.responded_at = now
+            existing.reward_points = 0
+        else:
+            session.add(
+                SuggestionInteraction(
+                    user_id=user.sub,
+                    suggestion_id=suggestion_id,
+                    suggestion_type="shift-consumption",
+                    period_start=period_start,
+                    period_end=period_end,
+                    responded_at=now,
+                    response="reminded",
+                    reward_points=0,
+                )
+            )
+        await session.commit()
+
+    return SuccessResponse()
 
 
 @router.post(

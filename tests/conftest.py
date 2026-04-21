@@ -12,22 +12,86 @@ from celine.webapp.api.deps import get_nudging_client
 class FakeNudgingClient:
     def __init__(self):
         self.max_per_day = 5
+        self.channel_email = False
+        self.email = ""
+        self.enabled_notification_kinds = ["meter_anomaly", "price_up"]
+        self.catalog = [
+            {
+                "kind": "meter_anomaly",
+                "label": "Sensor and meter anomalies",
+                "description": "Alerts for faulty devices.",
+                "cadence": "At most once per day.",
+                "enabled": True,
+                "editable": True,
+            },
+            {
+                "kind": "price_up",
+                "label": "Price increase alerts",
+                "description": "Alerts when prices rise.",
+                "cadence": "At most once per day.",
+                "enabled": True,
+                "editable": True,
+            },
+            {
+                "kind": "extr_event",
+                "label": "Weather alerts",
+                "description": "Relevant weather alerts for the community.",
+                "cadence": "When a relevant alert is issued.",
+                "enabled": True,
+                "editable": False,
+            },
+        ]
 
     async def get_preferences(self, *, token=None):
         class Pref:
-            def __init__(self, max_per_day: int):
+            def __init__(self, max_per_day: int, channel_email: bool, email: str, enabled_notification_kinds: list[str]):
                 self.max_per_day = max_per_day
+                self.channel_email = channel_email
+                self.email = email
+                self.enabled_notification_kinds = enabled_notification_kinds
 
-        return Pref(self.max_per_day)
+        return Pref(
+            self.max_per_day,
+            self.channel_email,
+            self.email,
+            list(self.enabled_notification_kinds),
+        )
 
-    async def update_preferences(self, max_per_day: int, *, token=None):
+    async def update_preferences(
+        self,
+        max_per_day: int,
+        channel_email: bool | None = None,
+        email: str | None = None,
+        enabled_notification_kinds: list[str] | None = None,
+        *,
+        token=None,
+    ):
         self.max_per_day = max_per_day
+        if channel_email is not None:
+            self.channel_email = channel_email
+        if email is not None:
+            self.email = email
+        if enabled_notification_kinds is not None:
+            self.enabled_notification_kinds = enabled_notification_kinds
+            for item in self.catalog:
+                item["enabled"] = item["kind"] in enabled_notification_kinds
 
         class Pref:
-            def __init__(self, max_per_day: int):
+            def __init__(self, max_per_day: int, channel_email: bool, email: str, enabled_notification_kinds: list[str]):
                 self.max_per_day = max_per_day
+                self.channel_email = channel_email
+                self.email = email
+                self.enabled_notification_kinds = enabled_notification_kinds
 
-        return Pref(self.max_per_day)
+        return Pref(
+            self.max_per_day,
+            self.channel_email,
+            self.email,
+            list(self.enabled_notification_kinds),
+        )
+
+    async def get_preference_catalog(self, *, lang=None, token=None):
+        return [dict(item) for item in self.catalog]
 
     async def list_notifications(self, *, limit=50, offset=0, unread_only=False, token=None):
         return []
