@@ -2,6 +2,36 @@
 
 <!-- version list -->
 
+## v1.5.0 (2026-04-28)
+
+### Chores
+
+- Upgrade celine-sdk to 1.10.0
+  ([`b035ad8`](https://github.com/celine-eu/celine-webapp/commit/b035ad8bddf084a5ffeefe94ce01629b76fc71d9))
+
+- Upgrade celine-sdk to 1.11.0
+  ([`b1db977`](https://github.com/celine-eu/celine-webapp/commit/b1db9777ac1faf9eeacd999e8b818f9dd739a02d))
+
+- Upgrade celine-sdk to 1.12.0
+  ([`68a49e0`](https://github.com/celine-eu/celine-webapp/commit/68a49e02d6ee7af1d05cd64ed5ab6ee4a0239dd4))
+
+- Upgrade celine-sdk to 1.12.1
+  ([`6966fb5`](https://github.com/celine-eu/celine-webapp/commit/6966fb5e7ccb38ed02e0732b1c7ec2fc3b76c457))
+
+- **deps**: Bump the runtime-dependencies group across 1 directory with 2 updates
+  ([`24f9fa5`](https://github.com/celine-eu/celine-webapp/commit/24f9fa5eb7588edd528357c546ba9d53fdc600f3))
+
+### Continuous Integration
+
+- Bump the actions group across 1 directory with 3 updates
+  ([`f1daefc`](https://github.com/celine-eu/celine-webapp/commit/f1daefc74d7d285a9ddebd05ae38169bcc64610b))
+
+### Features
+
+- Add the feedback
+  ([`f8b3d2f`](https://github.com/celine-eu/celine-webapp/commit/f8b3d2fe8afd81ef0f969c9a7d5243fda2cd736b))
+
+
 ## v1.4.0 (2026-04-15)
 
 ### Bug Fixes
