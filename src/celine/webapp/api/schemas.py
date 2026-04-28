@@ -1,6 +1,7 @@
 """Pydantic schemas for API requests and responses."""
 
 import re
+from datetime import datetime
 from pydantic import BaseModel, Field
 from pydantic import model_validator
 from typing import Literal, Optional
@@ -336,3 +337,36 @@ class Co2LocaleSettings(BaseModel):
 class Co2SettingsResponse(BaseModel):
     current: Co2LocaleSettings
     available: list[Co2LocaleSettings]
+
+
+class FeedbackScreenshotPayload(BaseModel):
+    mime_type: str = Field(default="image/png", max_length=64)
+    data_base64: str = Field(min_length=1)
+
+
+class FeedbackContextPayload(BaseModel):
+    page_url: str = Field(min_length=1)
+    page_title: Optional[str] = None
+    page_path: Optional[str] = None
+    locale: Optional[str] = Field(default=None, max_length=32)
+    timezone: Optional[str] = Field(default=None, max_length=64)
+    user_agent: Optional[str] = None
+    viewport_width: Optional[int] = Field(default=None, ge=0)
+    viewport_height: Optional[int] = Field(default=None, ge=0)
+    screen_width: Optional[int] = Field(default=None, ge=0)
+    screen_height: Optional[int] = Field(default=None, ge=0)
+    color_scheme: Optional[Literal["light", "dark"]] = None
+    client_timestamp: Optional[datetime] = None
+    extra: dict = Field(default_factory=dict)
+
+
+class FeedbackCreateRequest(BaseModel):
+    rating: int = Field(ge=0, le=5)
+    comment: str = Field(default="", max_length=4000)
+    context: FeedbackContextPayload
+    screenshot: Optional[FeedbackScreenshotPayload] = None
+
+
+class FeedbackCreateResponse(BaseModel):
+    id: str
+    created_at: datetime

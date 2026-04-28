@@ -17,6 +17,7 @@ dependencies = [
   "asyncpg>=0.31.0",
   "sqlalchemy-utils>=0.42.1",
   "celine-sdk>=1.12.1",
+  "typer>=0.16.1",
 ]
 
 
@@ -63,3 +64,5 @@ patch_tags = ["fix", "perf", "up"]
 parse_squash_commits = true
 ignore_merge_commits = true
 
+[project.scripts]
+celine-webapp-export-feedback = "celine.webapp.cli:main"

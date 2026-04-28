@@ -11,6 +11,7 @@ from celine.webapp.api.forecast import router as forecast_router
 from celine.webapp.api.suggestions import router as suggestions_router
 from celine.webapp.api.gamification import router as gamification_router
 from celine.webapp.api.community import router as community_router
+from celine.webapp.api.feedback import router as feedback_router
 
 __all__ = [
     "user_router",
@@ -24,4 +25,5 @@ __all__ = [
     "suggestions_router",
     "gamification_router",
     "community_router",
+    "feedback_router",
 ]

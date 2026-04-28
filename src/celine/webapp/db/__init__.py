@@ -2,6 +2,7 @@
 
 from celine.webapp.db.models import (
     Base,
+    FeedbackEntry,
     PolicyAcceptance,
     Settings,
 )
@@ -17,6 +18,7 @@ from celine.webapp.db.session import (
 __all__ = [
     # Models
     "Base",
+    "FeedbackEntry",
     "PolicyAcceptance",
     "Settings",
     # Session

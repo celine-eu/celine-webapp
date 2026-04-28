@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Float, Boolean, DateTime, Integer, Uuid
+from sqlalchemy import String, Float, Boolean, DateTime, Integer, Uuid, Text, LargeBinary, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -81,5 +81,35 @@ class UserBadge(Base):
     user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     badge_id: Mapped[str] = mapped_column(String(50), nullable=False)
     earned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class FeedbackEntry(Base):
+    """Stores user feedback together with page diagnostics."""
+
+    __tablename__ = "feedback_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    page_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    page_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    locale: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    viewport_width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    viewport_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    screen_width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    screen_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    color_scheme: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    client_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    client_ip: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    extra_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    screenshot_mime_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    screenshot_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
