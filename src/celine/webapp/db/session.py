@@ -10,7 +10,7 @@ from celine.webapp.db.models import Base
 
 # Create async engine
 async_engine = create_async_engine(
-    settings.database_url,
+    settings.resolved_database_url,
     echo=settings.database_echo,
     pool_pre_ping=True,
     pool_size=5,
@@ -26,7 +26,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 # Sync engine for Alembic migrations only
 sync_engine = create_engine(
-    settings.database_url.replace("+asyncpg", ""),
+    settings.resolved_database_url.replace("+asyncpg", ""),
     echo=settings.database_echo,
 )
 

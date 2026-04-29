@@ -1,9 +1,43 @@
 """Application settings using pydantic-settings."""
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import socket
+from pathlib import Path
 from typing import Optional
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL, make_url
+
 from celine.sdk.settings.models import OidcSettings
+
+
+def _is_running_in_container() -> bool:
+    return Path("/.dockerenv").exists()
+
+
+def resolve_local_dev_url(raw_url: str) -> str:
+    """Keep host-gateway URLs in containers, fallback to loopback on the host."""
+
+    url = make_url(raw_url)
+    if url.host != "host.docker.internal":
+        return raw_url
+
+    if _is_running_in_container():
+        return raw_url
+
+    try:
+        socket.getaddrinfo(url.host, url.port or 0)
+        return raw_url
+    except socket.gaierror:
+        fallback_url = URL.create(
+            drivername=url.drivername,
+            username=url.username,
+            password=url.password,
+            host="127.0.0.1",
+            port=url.port,
+            database=url.database,
+            query=url.query,
+        )
+        return fallback_url.render_as_string(hide_password=False)
 
 
 class Settings(BaseSettings):
@@ -39,6 +73,10 @@ class Settings(BaseSettings):
     rec_registry_url: Optional[str] = "http://host.docker.internal:8004"
     flexibility_api_url: Optional[str] = "http://host.docker.internal:8017"
     nudging_ingest_scope: str = "nudging.ingest"
+
+    @property
+    def resolved_database_url(self) -> str:
+        return resolve_local_dev_url(self.database_url)
 
 
 # Global settings instance
