@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.1 (2026-04-29)
+
+### Bug Fixes
+
+- Improve the screenshot and the CLI
+  ([`d9ddf42`](https://github.com/celine-eu/celine-webapp/commit/d9ddf429609152fa70566484e3815394e1f52f2b))
+
+
 ## v1.5.0 (2026-04-28)
 
 ### Chores
