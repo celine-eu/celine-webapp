@@ -54,6 +54,7 @@ The notification system proxies the nudging-tool:
 ## Web Push (VAPID)
 
 Setup flow:
+
 1. Frontend requests the VAPID public key from `GET /api/notifications/webpush/vapid-public-key`.
 2. Browser subscribes using the Web Push API (`PushManager.subscribe`).
 3. The subscription endpoint is registered via `POST /api/notifications/webpush/subscribe`.
