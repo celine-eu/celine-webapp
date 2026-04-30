@@ -1,29 +1,16 @@
 # API Reference
 
-All BFF endpoints are served under `/api`. The JWT is read from the `X-Auth-Request-Access-Token` header (injected by oauth2_proxy). No client-side auth header is needed.
+All BFF endpoints are served under `/api`. The JWT is read from the `X-Auth-Request-Access-Token` header (injected by oauth2_proxy). Interactive docs at `http://localhost:8014/docs`.
 
 ## User
 
 ### `GET /api/me`
 
-Returns the authenticated user's profile. Used by the frontend layout loader to enforce terms acceptance.
+Returns the authenticated user's profile, terms acceptance status, and settings.
 
-**Response:**
-```json
-{
-  "sub": "user-uuid",
-  "email": "user@example.com",
-  "name": "Alice Rossi",
-  "groups": ["/viewers"],
-  "terms_accepted": true
-}
-```
+### `POST /api/terms/accept`
 
-If `terms_accepted` is `false`, the frontend redirects to the terms acceptance flow.
-
-### `POST /api/me/terms`
-
-Record the user's acceptance of terms. Sets `terms_accepted = true` for the authenticated user.
+Record the user's acceptance of the current terms version.
 
 ---
 
@@ -33,17 +20,81 @@ Record the user's acceptance of terms. Sets `terms_accepted = true` for the auth
 
 Returns the energy overview for the authenticated user's community. Aggregates data from the Digital Twin.
 
-**Response:**
-```json
-{
-  "community_id": "COMM1",
-  "period": "2026-03",
-  "production_kwh": 1200.5,
-  "consumption_kwh": 980.3,
-  "shared_kwh": 430.1,
-  "incentive_eur": 85.20
-}
-```
+---
+
+## Weather
+
+### `GET /api/weather`
+
+Returns current weather conditions for the user's community location via the Digital Twin.
+
+---
+
+## Forecast
+
+### `GET /api/forecast`
+
+Returns energy production/consumption forecast for the user via the Digital Twin.
+
+---
+
+## Community
+
+### `GET /api/community`
+
+Returns community metadata (name, description, areas, links) from the rec-registry.
+
+---
+
+## Suggestions and Commitments
+
+### `GET /api/suggestions`
+
+List active flexibility window suggestions for the user. Includes current window details, acceptance status, and available actions.
+
+### `POST /api/suggestions/{suggestion_id}/remind`
+
+Schedule a flexibility reminder for a suggestion via the nudging-tool.
+
+### `POST /api/suggestions/{suggestion_id}/respond`
+
+Accept or reject a flexibility suggestion. Creates a commitment in the flexibility-api.
+
+### `DELETE /api/commitments/{commitment_id}`
+
+Cancel an active commitment.
+
+---
+
+## Gamification
+
+### `GET /api/gamification`
+
+Returns the user's gamification profile: points from flexibility-api, badges, level, and community ranking from Digital Twin.
+
+### `GET /api/gamification/history`
+
+Returns the user's commitment history from the flexibility-api.
+
+---
+
+## CO2 Settings
+
+### `GET /api/settings/co2`
+
+Returns CO2 emission factors and configuration.
+
+---
+
+## Settings
+
+### `GET /api/settings`
+
+Return the user's current settings (language, units, notification preferences).
+
+### `PUT /api/settings`
+
+Update user settings.
 
 ---
 
@@ -58,51 +109,46 @@ List notifications for the authenticated user.
 - `offset` — pagination offset
 - `unread` — if `true`, return only unread
 
-### `POST /api/notifications/{id}/read`
+### `POST /api/notifications/enable`
 
-Mark a notification as read.
+Enable notifications for the user.
 
-### `DELETE /api/notifications/{id}`
+### `POST /api/notifications/disable`
 
-Delete a notification.
+Disable notifications for the user.
 
----
+### `POST /api/notifications/read-all`
 
-## Settings
+Mark all notifications as read.
 
-### `GET /api/settings`
+### `POST /api/notifications/{notification_id}/read`
 
-Return the user's current settings including notification preferences and push subscription status.
+Mark a single notification as read.
 
-### `PUT /api/settings`
-
-Update notification preferences.
-
-**Request body:**
-```json
-{
-  "notifications_enabled": true,
-  "preferred_language": "en",
-  "max_per_day": 3
-}
-```
-
-### `GET /api/settings/vapid-public-key`
+### `GET /api/notifications/webpush/vapid-public-key`
 
 Return the VAPID public key for web push subscription setup.
 
-### `POST /api/settings/push-subscribe`
+### `POST /api/notifications/webpush/subscribe`
 
 Register a browser push subscription endpoint.
 
-### `POST /api/settings/push-unsubscribe`
+### `POST /api/notifications/webpush/unsubscribe`
 
 Remove a push subscription.
 
 ---
 
-## Assistant Proxy
+## Feedback
 
-### `* /api/assistant/{path}`
+### `POST /api/feedback`
 
-Proxy all assistant requests (GET, POST, DELETE) to the celine-ai-assistant service, forwarding the user's access token.
+Submit user feedback. Returns `201` on success.
+
+---
+
+## Health
+
+### `GET /health`
+
+Service health check.

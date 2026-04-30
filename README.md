@@ -9,7 +9,7 @@ The participant frontend (SvelteKit) is maintained separately in [celine-fronten
 The webapp uses the BFF pattern:
 - The frontend (SvelteKit) communicates exclusively with the BFF at `/api/*`
 - The BFF reads the JWT from the `X-Auth-Request-Access-Token` header injected by oauth2_proxy
-- The BFF proxies authenticated requests to backend services (Digital Twin, nudging-tool)
+- The BFF proxies authenticated requests to backend services (Digital Twin, nudging-tool, flexibility-api, rec-registry)
 - No cross-origin requests from the browser
 
 ## Quick Start
@@ -17,8 +17,8 @@ The webapp uses the BFF pattern:
 ```bash
 uv sync
 uv run alembic upgrade head
-uv run -m celine.webapp.main
-# Listens on http://localhost:8000
+task run
+# Listens on http://localhost:8014
 ```
 
 For the participant frontend, see [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`.
@@ -27,21 +27,34 @@ For the participant frontend, see [celine-frontend](https://github.com/celine-eu
 
 | Feature | Description |
 |---|---|
-| Overview | Energy consumption and production summary |
-| Notifications | User notification list and preferences |
-| Settings | Account settings, terms acceptance |
-| Web Push | VAPID-based push notification subscription |
-| Digital Twin | Real-time energy data via DT integration |
-| Assistant | Embedded AI assistant (proxied to celine-ai-assistant) |
+| Overview | Energy consumption and production summary from Digital Twin |
+| Weather | Current weather conditions for the user's community |
+| Forecast | Energy production/consumption forecast from Digital Twin |
+| Suggestions | Flexibility window suggestions with accept/reject/remind actions |
+| Commitments | Active commitment tracking and cancellation |
+| Gamification | Points, badges, and commitment history from flexibility-api |
+| CO2 | Carbon emission factors and settings |
+| Community | Community metadata from rec-registry |
+| Notifications | User notification list, read/unread, enable/disable |
+| Web Push | VAPID-based push notification subscription via nudging-tool |
+| Settings | Account settings (language, units), terms acceptance |
+| Feedback | User feedback submission |
+| Health | Service health check |
+
+## CLI
+
+```bash
+celine-webapp-export-feedback   # Export user feedback data
+```
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [Architecture](https://celine-eu.github.io/projects/celine-webapp/docs/architecture) | BFF pattern, JWT flow, service dependencies, deployment model |
-| [API Reference](https://celine-eu.github.io/projects/celine-webapp/docs/api-reference) | All BFF endpoints: user, overview, notifications, settings |
-| [Features](https://celine-eu.github.io/projects/celine-webapp/docs/features) | Terms acceptance, web push, digital twin integration |
-| [Development](https://celine-eu.github.io/projects/celine-webapp/docs/development) | Local dev proxy setup, env vars, running tests |
+| [Architecture](docs/architecture.md) | BFF pattern, JWT flow, service dependencies, deployment model |
+| [API Reference](docs/api-reference.md) | All BFF endpoints with paths and query params |
+| [Features](docs/features.md) | Feature details: suggestions, gamification, CO2, feedback |
+| [Development](docs/development.md) | Local dev setup, env vars, taskfile commands |
 
 ## License
 

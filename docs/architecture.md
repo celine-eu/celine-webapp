@@ -11,14 +11,14 @@ Benefits:
 
 ## Deployment Model
 
-Requests from the browser pass through Caddy (TLS termination) → oauth2_proxy (OIDC authentication against Keycloak) → the BFF. The BFF then forwards authenticated requests to internal services (digital-twin, nudging-tool, celine-ai-assistant).
+Requests from the browser pass through Caddy (TLS termination) -> oauth2_proxy (OIDC authentication against Keycloak) -> the BFF. The BFF then forwards authenticated requests to internal services.
 
 | Layer | Component | Role |
 |---|---|---|
 | Ingress | Caddy | TLS termination, reverse proxy |
 | Auth | oauth2_proxy | OIDC login with Keycloak, JWT injection |
 | Application | FastAPI BFF | Request handling, service aggregation |
-| Backend services | digital-twin, nudging-tool, celine-ai-assistant | Domain data |
+| Backend services | digital-twin, nudging-tool, flexibility-api, rec-registry | Domain data |
 
 The BFF is deployed as a standalone container. The participant frontend is served from [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`.
 
@@ -34,10 +34,20 @@ The BFF is deployed as a standalone container. The participant frontend is serve
 
 | Service | Usage |
 |---|---|
-| **Digital Twin** | Energy overview data, participant values |
-| **nudging-tool** | Notification list and preferences |
-| **celine-ai-assistant** | Embedded chat assistant (proxied) |
+| **Digital Twin** | Energy overview, weather, forecast, participant values, community data |
+| **nudging-tool** | Notification list, preferences, web push, flexibility reminders |
+| **flexibility-api** | Gamification points, commitment history, flexibility window responses |
+| **rec-registry** | Community metadata (name, areas, links) |
 | **Keycloak** | Identity provider (via oauth2_proxy) |
+
+All service clients are provided via `celine-sdk`.
+
+## Database
+
+PostgreSQL (async via SQLAlchemy + asyncpg). Stores:
+- User settings (language, units)
+- Terms acceptance records
+- Feedback submissions
 
 ## Frontend
 
