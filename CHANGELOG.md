@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.6.0 (2026-05-04)
+
+### Chores
+
+- Update docs
+  ([`21c55cb`](https://github.com/celine-eu/celine-webapp/commit/21c55cb6fd206c9e1aa027bfca688a254f491e92))
+
+- Update docs
+  ([`3dba9f9`](https://github.com/celine-eu/celine-webapp/commit/3dba9f900153c3bde4927a18a1903a131aa7f46f))
+
+### Features
+
+- Added tracking on notification interaction
+  ([`dc29291`](https://github.com/celine-eu/celine-webapp/commit/dc29291caf0ec3ae13daa6613573314c133d658a))
+
+
 ## v1.5.1 (2026-04-29)
 
 ### Bug Fixes
