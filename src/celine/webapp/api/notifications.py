@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from celine.webapp.api.deps import NudgingDep, UserDep, DbDep
 from celine.webapp.api.schemas import (
+    NotificationClickTrackPayload,
     NotificationItem,
     PushSubscriptionPayload,
     PushSubscriptionUnsubscribePayload,
@@ -162,4 +163,22 @@ async def webpush_unsubscribe(
         webpush_enabled=False,
     )
 
+    return SuccessResponse()
+
+
+@router.post("/track-click", response_model=SuccessResponse)
+async def track_notification_click(
+    user: UserDep,
+    nudging_client: NudgingDep,
+    payload: NotificationClickTrackPayload,
+) -> SuccessResponse:
+    client = nudging_client._get_client(None).get_async_httpx_client()
+    res = await client.post(
+        "/notifications/track-click",
+        json={
+            "token": payload.token,
+            "action": payload.action,
+        },
+    )
+    res.raise_for_status()
     return SuccessResponse()

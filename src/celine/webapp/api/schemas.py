@@ -148,6 +148,11 @@ class PushSubscriptionUnsubscribePayload(BaseModel):
     endpoint: str
 
 
+class NotificationClickTrackPayload(BaseModel):
+    token: str
+    action: str | None = None
+
+
 # ─── Community metadata ───────────────────────────────────────────────────────
 
 class CommunityMetaResponse(BaseModel):
