@@ -132,7 +132,7 @@ async def _schedule_flexibility_reminder(
         verify_ssl=settings.oidc.verify_ssl,
     )
     access_token = await provider.get_token()
-    trigger_at = period_start - timedelta(minutes=10)
+    trigger_at = period_start - timedelta(minutes=30)
     facts = {
         "facts_version": "1.0",
         "scenario": "flexibility_reminder",
