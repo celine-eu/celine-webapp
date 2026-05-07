@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.7.0 (2026-05-07)
+
+### Features
+
+- Update to 30minutes delta
+  ([`9a6b116`](https://github.com/celine-eu/celine-webapp/commit/9a6b11691efff1296978a1e0b47aecccdaffe47d))
+
+
 ## v1.6.0 (2026-05-04)
 
 ### Chores
