@@ -41,15 +41,13 @@ def _next_level_at(total_points: int) -> int:
 
 
 @router.get("/gamification", response_model=GamificationResponse)
-async def gamification(user: UserDep, db: DbDep, dt: DTDep, flexibility: FlexibilityDep) -> GamificationResponse:
+async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationResponse:
     """Return user's total points, level, badges, action count and real ranking.
 
-    Points have two tiers:
-    - Base points: passive engagement during flexibility windows (rec_participant_points,
-      window consumption kWh × 10). Attributed to the consumption date.
-    - Active points: committed windows settled by flexibility-api
-      (reward_points_actual from GET /api/commitments). Attributed to window date (period_start).
-    Total = base + active, merged into a single per-day breakdown.
+    Points come from rec_participant_points (the pipeline-computed source of
+    truth that already includes baseline-validated bonus).  The flexibility-api
+    reward_points_actual is NOT used here because the settlement formula does
+    not compare against baseline, producing inflated values.
     """
     async with db as session:
         badge_rows = (
@@ -76,16 +74,6 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep, flexibility: Flexibi
             )
         ).scalar() or 0
 
-    # Build a date → bonus_points map from settled commitments via flexibility-api.
-    active_bonus: dict[str, int] = {}
-    try:
-        committed = await flexibility.list_commitments(status="settled", limit=200)
-        for row in committed.items:
-            day = row.period_start[:10]  # ISO date from ISO timestamp string
-            active_bonus[day] = active_bonus.get(day, 0) + (row.reward_points_actual or 0)
-    except Exception as exc:
-        logger.warning("Failed to fetch settled commitments from flexibility-api: %s", exc)
-
     # Resolve participant's device_id once; used for both points and ranking.
     device_id = ""
     try:
@@ -98,7 +86,8 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep, flexibility: Flexibi
     except Exception as exc:
         logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
 
-    # Base points: passive window consumption from rec_participant_points.
+    # Daily points from rec_participant_points — the pipeline-computed source of
+    # truth that includes baseline-validated scoring.
     total_points = 0
     daily_points: list[DailyPointsItem] = []
     if device_id:
@@ -112,19 +101,13 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep, flexibility: Flexibi
                 for item in pts_res.items:
                     d = item.to_dict()
                     day = str(d.get("ts_date", ""))
-                    base = int(d.get("daily_points") or 0)
-                    bonus = active_bonus.pop(day, 0)
-                    pts = base + bonus
+                    pts = int(d.get("daily_points") or 0)
                     total_points += pts
                     daily_points.append(DailyPointsItem(date=day, points=pts))
         except Exception as exc:
             logger.warning("rec_participant_points fetch failed: %s", exc)
-
-    # Any bonus days not covered by a base-points row (e.g. device had no passive
-    # window consumption that day but did commit and deliver).
-    for day, bonus in sorted(active_bonus.items()):
-        total_points += bonus
-        daily_points.append(DailyPointsItem(date=day, points=bonus))
+    else:
+        logger.warning("No device_id found for user %s — daily points unavailable", user.sub)
     daily_points.sort(key=lambda x: x.date)
 
     # Community ranking from rec_gamification_summary (today's snapshot).
@@ -163,18 +146,60 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep, flexibility: Flexibi
 
 
 @router.get("/gamification/history", response_model=CommitmentHistoryResponse)
-async def gamification_history(user: UserDep, flexibility: FlexibilityDep) -> CommitmentHistoryResponse:
-    """Return commitment history from flexibility-api."""
+async def gamification_history(user: UserDep, flexibility: FlexibilityDep, dt: DTDep) -> CommitmentHistoryResponse:
+    """Return commitment history with real bonus points from rec_participant_points.
+
+    The flexibility-api settlement computes reward_points_actual from raw
+    consumption without baseline comparison, which inflates the value.
+    We cross-reference with rec_participant_points (the pipeline source of
+    truth) to replace settled reward_points_actual with real earned values.
+    """
     try:
         result = await flexibility.list_commitments(limit=50)
     except Exception as exc:
         logger.warning("Failed to fetch commitment history from flexibility-api: %s", exc)
         return CommitmentHistoryResponse(items=[], total_points_earned=0)
 
+    # Fetch real daily points to cross-reference settled bonus values.
+    real_daily_points: dict[str, int] = {}
+    device_id = ""
+    try:
+        assets = await dt.participants.assets(user.sub)
+        if assets and assets.items:
+            for asset in assets.items:
+                if asset.sensor_id:
+                    device_id = asset.sensor_id
+                    break
+    except Exception as exc:
+        logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
+
+    if device_id:
+        try:
+            pts_res = await dt.participants.fetch_values(
+                participant_id=user.sub,
+                fetcher_id="rec_participant_points",
+                payload={"device_id": device_id},
+            )
+            if pts_res and pts_res.count > 0:
+                for item in pts_res.items:
+                    d = item.to_dict()
+                    day = str(d.get("ts_date", ""))
+                    real_daily_points[day] = int(d.get("daily_points") or 0)
+        except Exception as exc:
+            logger.warning("rec_participant_points fetch failed for history: %s", exc)
+
     items: list[FlexibilityHistoryItem] = []
     total_earned = 0
 
     for row in result.items:
+        actual_pts = row.reward_points_actual
+
+        # For settled commitments, replace the inflated flexibility-api value
+        # with the real points from rec_participant_points for that day.
+        if row.status.value == "settled" and real_daily_points:
+            day = row.period_start.isoformat()[:10]
+            actual_pts = real_daily_points.get(day, 0)
+
         items.append(
             FlexibilityHistoryItem(
                 id=str(row.id),
@@ -185,11 +210,11 @@ async def gamification_history(user: UserDep, flexibility: FlexibilityDep) -> Co
                 settled_at=row.settled_at.isoformat() if row.settled_at else None,
                 status=row.status.value,
                 reward_points_estimated=row.reward_points_estimated,
-                reward_points_actual=row.reward_points_actual,
+                reward_points_actual=actual_pts,
                 impact_kwh_actual=None,
             )
         )
-        if row.reward_points_actual:
-            total_earned += row.reward_points_actual
+        if actual_pts:
+            total_earned += actual_pts
 
     return CommitmentHistoryResponse(items=items, total_points_earned=total_earned)
