@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.0 (2026-05-15)
+
+### Features
+
+- Update point status
+  ([`5a69259`](https://github.com/celine-eu/celine-webapp/commit/5a69259da672c7748917e749ccf695cd62841690))
+
+
 ## v1.7.0 (2026-05-07)
 
 ### Features
