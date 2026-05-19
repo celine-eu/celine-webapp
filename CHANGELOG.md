@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.9.0 (2026-05-19)
+
+### Features
+
+- In-app onboarding
+  ([`13b1125`](https://github.com/celine-eu/celine-webapp/commit/13b1125e617f4ef8e4e8cde9ce918e8b1f1a3f37))
+
+
 ## v1.8.0 (2026-05-15)
 
 ### Features
