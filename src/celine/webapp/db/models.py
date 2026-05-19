@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Float, Boolean, DateTime, Integer, Uuid, Text, LargeBinary, JSON
+from sqlalchemy import String, Float, Boolean, DateTime, Integer, Uuid, Text, LargeBinary, JSON, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -45,11 +45,30 @@ class Settings(Base):
     webpush_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    onboarding_seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserOnboardingView(Base):
+    """Tracks which onboarding pages a user has completed."""
+
+    __tablename__ = "user_onboarding_views"
+    __table_args__ = (
+        UniqueConstraint("user_id", "page_key", name="uq_user_onboarding_page"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    page_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

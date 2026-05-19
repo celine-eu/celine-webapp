@@ -9,11 +9,16 @@ from celine.webapp.api.deps import UserDep, DbDep, get_client_ip
 from celine.webapp.api.schemas import (
     MeResponse,
     AcceptTermsRequest,
+    OnboardingSeenRequest,
     SuccessResponse,
 )
 from celine.webapp.db import (
     PolicyAcceptance,
     Settings,
+)
+from celine.webapp.db.user_settings import (
+    list_onboarding_seen_pages,
+    mark_onboarding_page_seen,
 )
 from celine.webapp.settings import settings as app_settings
 
@@ -71,6 +76,7 @@ async def me(
 
     required, accepted_version = await terms_required_for(user.sub, db)
     settings = await get_user_settings(user.sub, db)
+    onboarding_seen_pages = await list_onboarding_seen_pages(user.sub, db)
 
     notification_permission = request.headers.get(
         "X-REC-Notification-Permission", "default"
@@ -89,7 +95,20 @@ async def me(
         font_scale=settings.font_scale,
         notification_permission=notification_permission,
         webpush_configured=settings.webpush_enabled,
+        onboarding_seen=settings.onboarding_seen_at is not None,
+        onboarding_seen_pages=onboarding_seen_pages,
     )
+
+
+@router.post("/onboarding/seen", response_model=SuccessResponse)
+async def onboarding_seen(
+    body: OnboardingSeenRequest,
+    user: UserDep,
+    db: DbDep,
+) -> SuccessResponse:
+    """Mark one in-app onboarding page as seen for the current user."""
+    await mark_onboarding_page_seen(user.sub, body.page_key, db)
+    return SuccessResponse()
 
 
 @router.post("/terms/accept", response_model=SuccessResponse)

@@ -37,6 +37,14 @@ class MeResponse(BaseModel):
     font_scale: float = 1.0
     notification_permission: Literal["default", "granted", "denied"] = "default"
     webpush_configured: bool = False
+    onboarding_seen: bool = False
+    onboarding_seen_pages: list[str] = Field(default_factory=list)
+
+
+class OnboardingSeenRequest(BaseModel):
+    """Request to mark one onboarding page as seen."""
+
+    page_key: str = Field(min_length=1, max_length=80)
 
 
 # Terms

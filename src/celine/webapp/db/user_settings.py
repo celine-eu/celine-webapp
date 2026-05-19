@@ -6,10 +6,12 @@ Always upserts - callers never need to worry about whether the row exists.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from celine.webapp.db.models import Settings
+from celine.webapp.db.models import Settings, UserOnboardingView
 
 
 async def load_user_settings(user_id: str, db: AsyncSession) -> Settings:
@@ -24,6 +26,7 @@ async def load_user_settings(user_id: str, db: AsyncSession) -> Settings:
             font_scale=1.0,
             email_notifications=False,
             webpush_enabled=False,
+            onboarding_seen_at=None,
         )
         db.add(settings)
         await db.commit()
@@ -41,6 +44,45 @@ async def set_webpush_enabled(
     await db.commit()
     await db.refresh(settings)
     return settings
+
+
+async def mark_onboarding_seen(user_id: str, db: AsyncSession) -> Settings:
+    """Mark the in-app onboarding as seen for the user."""
+    settings = await load_user_settings(user_id, db)
+    if settings.onboarding_seen_at is None:
+        settings.onboarding_seen_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(settings)
+    return settings
+
+
+async def list_onboarding_seen_pages(user_id: str, db: AsyncSession) -> list[str]:
+    """Return page keys for completed onboarding tours."""
+    result = await db.execute(
+        select(UserOnboardingView.page_key).filter(
+            UserOnboardingView.user_id == user_id
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def mark_onboarding_page_seen(
+    user_id: str, page_key: str, db: AsyncSession
+) -> UserOnboardingView:
+    """Mark one onboarding page as completed for a user."""
+    result = await db.execute(
+        select(UserOnboardingView).filter(
+            UserOnboardingView.user_id == user_id,
+            UserOnboardingView.page_key == page_key,
+        )
+    )
+    view = result.scalar_one_or_none()
+    if view is None:
+        view = UserOnboardingView(user_id=user_id, page_key=page_key)
+        db.add(view)
+        await db.commit()
+        await db.refresh(view)
+    return view
 
 
 async def update_user_settings(

@@ -19,6 +19,23 @@ def test_me_endpoint_with_auth(client: TestClient, auth_headers: dict):
     assert data["user"]["email"] == "test@example.com"
     assert data["has_smart_meter"] is False
     assert data["terms_required"] is True
+    assert data["onboarding_seen"] is False
+    assert data["onboarding_seen_pages"] == []
+
+
+def test_mark_onboarding_seen(client: TestClient, auth_headers: dict):
+    """Test marking onboarding as seen."""
+    response = client.post(
+        "/api/onboarding/seen",
+        headers=auth_headers,
+        json={"page_key": "/notifications"},
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+    me_response = client.get("/api/me", headers=auth_headers)
+    assert me_response.status_code == 200
+    assert "/notifications" in me_response.json()["onboarding_seen_pages"]
 
 
 def test_accept_terms(client: TestClient, auth_headers: dict):

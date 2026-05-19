@@ -5,6 +5,7 @@ from celine.webapp.db.models import (
     FeedbackEntry,
     PolicyAcceptance,
     Settings,
+    UserOnboardingView,
 )
 from celine.webapp.db.session import (
     async_engine,
@@ -21,6 +22,7 @@ __all__ = [
     "FeedbackEntry",
     "PolicyAcceptance",
     "Settings",
+    "UserOnboardingView",
     # Session
     "async_engine",
     "sync_engine",
