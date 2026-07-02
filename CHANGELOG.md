@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.9.1 (2026-07-02)
+
+### Bug Fixes
+
+- Correct alembic upgrad
+  ([`cff5bbf`](https://github.com/celine-eu/celine-webapp/commit/cff5bbf1e3a8a62dbb5319169de032af784de79a))
+
+### Chores
+
+- Upgrade celine-sdk to 1.13.0
+  ([`ba28d19`](https://github.com/celine-eu/celine-webapp/commit/ba28d19140eec0f31554b6857e70ebf89a3a16fc))
+
+
 ## v1.9.0 (2026-05-19)
 
 ### Features
