@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.10.0 (2026-07-02)
+
+### Features
+
+- Add ping endpoint
+  ([`efeefe7`](https://github.com/celine-eu/celine-webapp/commit/efeefe7746ecd08c1f82a9d63af5b216c8dc3703))
+
+
 ## v1.9.1 (2026-07-02)
 
 ### Bug Fixes
