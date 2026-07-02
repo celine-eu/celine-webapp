@@ -20,32 +20,35 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "user_onboarding_views",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("user_id", sa.String(length=255), nullable=False),
-        sa.Column("page_key", sa.String(length=80), nullable=False),
-        sa.Column(
-            "seen_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "page_key", name="uq_user_onboarding_page"),
-    )
-    op.create_index(
-        op.f("ix_user_onboarding_views_user_id"),
-        "user_onboarding_views",
-        ["user_id"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_user_onboarding_views_page_key"),
-        "user_onboarding_views",
-        ["page_key"],
-        unique=False,
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "user_onboarding_views" not in inspector.get_table_names():
+        op.create_table(
+            "user_onboarding_views",
+            sa.Column("id", sa.Uuid(), nullable=False),
+            sa.Column("user_id", sa.String(length=255), nullable=False),
+            sa.Column("page_key", sa.String(length=80), nullable=False),
+            sa.Column(
+                "seen_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("user_id", "page_key", name="uq_user_onboarding_page"),
+        )
+        op.create_index(
+            op.f("ix_user_onboarding_views_user_id"),
+            "user_onboarding_views",
+            ["user_id"],
+            unique=False,
+        )
+        op.create_index(
+            op.f("ix_user_onboarding_views_page_key"),
+            "user_onboarding_views",
+            ["page_key"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:
