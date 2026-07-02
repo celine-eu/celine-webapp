@@ -26,6 +26,11 @@ from celine.webapp.settings import settings as app_settings
 router = APIRouter(prefix="/api", tags=["user"])
 
 
+@router.get("/ping", include_in_schema=False)
+async def ping(user: UserDep) -> dict:
+    return {"ok": True}
+
+
 async def get_accepted_policy_version(user_id: str, db: AsyncSession) -> str | None:
     """Get the accepted policy version for a user."""
     result = await db.execute(
