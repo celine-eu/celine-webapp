@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.11.0 (2026-07-03)
+
+### Features
+
+- **suggestions**: Community-first schema with optional personal impact and reward
+  ([`8a4b31b`](https://github.com/celine-eu/celine-webapp/commit/8a4b31b87d5b40f5bf211c7680366e5e6976154f))
+
+
 ## v1.10.1 (2026-07-03)
 
 ### Bug Fixes
