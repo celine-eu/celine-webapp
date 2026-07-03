@@ -143,3 +143,17 @@ def test_notifications_list(client: TestClient, auth_headers: dict):
     response = client.get("/api/notifications", headers=auth_headers)
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+def test_suggestion_item_allows_missing_personal_fields() -> None:
+    """Test that SuggestionItem validates without impact_kwh_estimated/reward_points."""
+    from celine.webapp.api.schemas import SuggestionItem
+
+    item = SuggestionItem(
+        id="w1", suggestion_type="shift-consumption",
+        period_start="2026-07-02T09:00:00", period_end="2026-07-02T12:00:00",
+        from_period="", clock_range="09:00–12:00", to_is_tomorrow=False,
+        to_period="morning", to_time="09:00", community_kwh=120.0,
+    )
+    assert item.impact_kwh_estimated is None
+    assert item.reward_points is None
