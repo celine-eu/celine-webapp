@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.11.1 (2026-07-03)
+
+### Bug Fixes
+
+- **deps**: Bump celine-sdk to 1.14.0
+  ([`3e365c7`](https://github.com/celine-eu/celine-webapp/commit/3e365c7b4479c0af5509fbf897a16a88903fbcdb))
+
+
 ## v1.11.0 (2026-07-03)
 
 ### Features
