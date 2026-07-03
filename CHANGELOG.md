@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.12.0 (2026-07-03)
+
+### Features
+
+- **webapp**: Grid-exchange semantics for contribution panel, robust forecast series
+  ([`391cdab`](https://github.com/celine-eu/celine-webapp/commit/391cdab2ced4aa47226c0b84ce60003a6c5e1342))
+
+
 ## v1.11.1 (2026-07-03)
 
 ### Bug Fixes
