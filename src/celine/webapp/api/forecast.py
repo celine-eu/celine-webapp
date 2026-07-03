@@ -22,8 +22,47 @@ def _float(val: Any, default: float = 0.0) -> float:
         return default
 
 
+def _first_value(row: dict[str, Any], *keys: str) -> float | None:
+    """Return the first non-null value among ``keys``, as float.
+
+    The meter forecast pipeline moved from ``total_*`` to ``grid_*`` columns;
+    dataset-api's SQL allowlist blocks COALESCE, so the fallback happens here.
+    """
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 def _str(val: Any) -> str:
     return str(val) if val is not None else ""
+
+
+def _parse_ts(ts: str) -> datetime:
+    """Parse an ISO timestamp for ordering; naive values are assumed UTC."""
+    try:
+        parsed = datetime.fromisoformat(ts)
+    except ValueError:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _sort_dedup(items: list[ForecastHourItem]) -> list[ForecastHourItem]:
+    """Order by timestamp and keep one row per instant.
+
+    The upstream fetchers already deduplicate forecast runs; this guards the
+    chart against regressions (duplicate timestamps render as a sawtooth).
+    """
+    deduped: dict[datetime, ForecastHourItem] = {}
+    for item in items:
+        deduped.setdefault(_parse_ts(item.ts), item)
+    return [deduped[key] for key in sorted(deduped)]
 
 
 @router.get("/forecast", response_model=ForecastResponse)
@@ -111,11 +150,14 @@ async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
             rec_forecast.append(
                 ForecastHourItem(
                     ts=_str(ts),
-                    value=_float(r.get("total_consumption_kwh")),
-                    lower=float(r["total_consumption_lower"]) if r.get("total_consumption_lower") is not None else None,
-                    upper=float(r["total_consumption_upper"]) if r.get("total_consumption_upper") is not None else None,
+                    value=_first_value(r, "total_consumption_kwh", "grid_import_kwh") or 0.0,
+                    lower=_first_value(r, "total_consumption_lower", "grid_import_lower"),
+                    upper=_first_value(r, "total_consumption_upper", "grid_import_upper"),
                     period=_str(r.get("period")) or "forecast",
                 )
             )
 
-    return ForecastResponse(user_forecast=user_forecast, rec_forecast=rec_forecast)
+    return ForecastResponse(
+        user_forecast=_sort_dedup(user_forecast),
+        rec_forecast=_sort_dedup(rec_forecast),
+    )

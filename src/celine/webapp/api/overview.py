@@ -161,21 +161,19 @@ async def overview(
                 # sum of the interval values — no × 0.25 conversion (that quartered
                 # the figures and made them inconsistent with the community column,
                 # which sums interval kWh directly).
+                #
+                # These are grid-exchange values: consumption_kw = grid import,
+                # production_kw = grid export (M1 meter at the POD). The panel
+                # labels them Import/Export. Per-device self-consumption is not
+                # derivable from exchange data; the "shared energy" figure is
+                # filled below from the virtual-consumption allocation.
                 production_kwh = total_production
                 consumption_kwh = total_consumption
-                # Self-consumption = energy from own production used locally.
-                # self_consumed_kw from the meter uses a sign convention that
-                # doesn't match (returns negative values equal to -production).
-                # Use the physically correct formula instead: min(P, C).
-                self_consumption_kwh = min(production_kwh, consumption_kwh)
                 user_data = {
                     "production_kwh": production_kwh,
                     "consumption_kwh": consumption_kwh,
-                    "self_consumption_kwh": self_consumption_kwh,
-                    "self_consumption_rate": _compute_self_consumption_rate(
-                        self_consumption_kwh,
-                        consumption_kwh,
-                    ),
+                    "self_consumption_kwh": None,
+                    "self_consumption_rate": None,
                 }
 
         except Exception as exc:
@@ -203,10 +201,24 @@ async def overview(
                 },
             )
             if user_trend_response and user_trend_response.count > 0:
+                trend_items = [item.to_dict() for item in user_trend_response.items]
                 user_trend = _build_user_daily_trend(
-                    [item.to_dict() for item in user_trend_response.items],
+                    trend_items,
                     trend_start,
                     now,
+                )
+                # "Shared energy" = this device's slice of the community's
+                # virtually self-consumed energy (energia condivisa) — the
+                # CER-meaningful per-device figure; physical self-consumption
+                # is not measurable from grid-exchange (M1) data.
+                shared_kwh = sum(
+                    _safe_float(item.get("virtual_consumption_kwh"))
+                    for item in trend_items
+                )
+                user_data["self_consumption_kwh"] = shared_kwh
+                user_data["self_consumption_rate"] = _compute_self_consumption_rate(
+                    shared_kwh,
+                    user_data.get("consumption_kwh"),
                 )
         except Exception as exc:
             logger.warning(

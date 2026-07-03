@@ -187,7 +187,7 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
             ts = r.get("datetime") or r.get("ts") or ""
             if irradiance_date is None:
                 ts_str = _str(ts)
-                irradiance_date = ts_str[:10] if len(ts_str) >= 10 else today.date().isoformat()
+                irradiance_date = ts_str[:10] if len(ts_str) >= 10 else now.date().isoformat()
             hourly_irradiance.append(
                 WeatherIrradianceItem(
                     ts=_str(ts),
@@ -199,7 +199,7 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
             )
 
     if irradiance_date is None and hourly_irradiance:
-        irradiance_date = today.date().isoformat()
+        irradiance_date = now.date().isoformat()
 
     return WeatherResponse(
         current=current,
