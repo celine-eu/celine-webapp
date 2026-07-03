@@ -83,6 +83,7 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
                 if asset.sensor_id:
                     device_id = asset.sensor_id
                     break
+        logger.info("gamification: user=%s device_id=%r assets_count=%d", user.sub, device_id, len(assets.items) if assets and assets.items else 0)
     except Exception as exc:
         logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
 
@@ -97,9 +98,14 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
                 fetcher_id="rec_participant_points",
                 payload={"device_id": device_id},
             )
+            logger.info(
+                "gamification: rec_participant_points user=%s device=%s count=%d",
+                user.sub, device_id, pts_res.count if pts_res else 0,
+            )
             if pts_res and pts_res.count > 0:
                 for item in pts_res.items:
                     d = item.to_dict()
+                    logger.debug("gamification: raw row keys=%s values=%s", list(d.keys()), {k: d[k] for k in list(d.keys())[:5]})
                     day = str(d.get("ts_date", ""))
                     pts = int(d.get("daily_points") or 0)
                     total_points += pts
@@ -109,6 +115,7 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
     else:
         logger.warning("No device_id found for user %s — daily points unavailable", user.sub)
     daily_points.sort(key=lambda x: x.date)
+    logger.info("gamification: user=%s total_points=%d daily_entries=%d", user.sub, total_points, len(daily_points))
 
     # Community ranking from rec_gamification_summary (today's snapshot).
     ranking: RankingInfo | None = None

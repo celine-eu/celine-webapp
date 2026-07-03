@@ -257,9 +257,10 @@ class SuggestionItem(BaseModel):
     to_is_tomorrow: bool
     to_period: str        # i18n key, e.g. "morning", "late_morning"
     to_time: str          # e.g. "10:30"
-    impact_kwh_estimated: float
-    reward_points: int
-    confidence: float
+    impact_kwh_estimated: float | None = None
+    reward_points: int | None = None
+    community_kwh: float = 0.0
+    confidence: float = 0.75
 
 
 class SuggestionRespondRequest(BaseModel):

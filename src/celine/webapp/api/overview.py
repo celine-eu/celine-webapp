@@ -124,15 +124,15 @@ async def overview(
 
     # Time range for queries
     now = datetime.now(timezone.utc)
-    twelve_hours_ago = now - timedelta(hours=12)
     trend_start = now - timedelta(days=days)
 
     # -------------------------------------------------------------------------
-    # Fetch user meter data (last 12 hours) using the meters_data value fetcher
+    # Fetch user meter data over the selected period (7 or 30 days) using the
+    # meters_data value fetcher, so "Your contribution" matches the day toggle
+    # and the community totals column (previously this used a fixed 12h window).
     # -------------------------------------------------------------------------
     if len(device_ids) > 0:
         try:
-            # TODO
             device_id = device_ids[0]
 
             # POST /participants/{participant_id}/values/meters_data
@@ -141,7 +141,7 @@ async def overview(
                 fetcher_id="meters_data",
                 payload={
                     "device_id": device_id,
-                    "start": twelve_hours_ago.isoformat(),
+                    "start": trend_start.isoformat(),
                     "end": now.isoformat(),
                 },
             )
@@ -156,11 +156,13 @@ async def overview(
                     _safe_float(r.to_dict().get("production_kw")) for r in items
                 )
 
-                # Convert from kW readings (15-min intervals) to kWh
-                # Each reading is 15 minutes = 0.25 hours
-                interval_hours = 0.25
-                production_kwh = total_production * interval_hours
-                consumption_kwh = total_consumption * interval_hours
+                # consumption_kw / production_kw are already kWh per 15-min interval
+                # (despite the _kw column name), so the period total is the plain
+                # sum of the interval values — no × 0.25 conversion (that quartered
+                # the figures and made them inconsistent with the community column,
+                # which sums interval kWh directly).
+                production_kwh = total_production
+                consumption_kwh = total_consumption
                 # Self-consumption = energy from own production used locally.
                 # self_consumed_kw from the meter uses a sign convention that
                 # doesn't match (returns negative values equal to -production).
