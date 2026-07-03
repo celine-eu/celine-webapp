@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.10.1 (2026-07-03)
+
+### Bug Fixes
+
+- **overview and suggestion**: Sum interval kWh directly and honor the 7/30-day toggle, add
+  community schema
+  ([`e017672`](https://github.com/celine-eu/celine-webapp/commit/e017672f0ccd1c933fa0719b37f8bed5b8814b8e))
+
+
 ## v1.10.0 (2026-07-02)
 
 ### Features
