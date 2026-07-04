@@ -131,6 +131,7 @@ async def overview(
     # meters_data value fetcher, so "Your contribution" matches the day toggle
     # and the community totals column (previously this used a fixed 12h window).
     # -------------------------------------------------------------------------
+    meters_items_raw: list[dict] = []
     if len(device_ids) > 0:
         try:
             device_id = device_ids[0]
@@ -146,27 +147,17 @@ async def overview(
                 },
             )
 
-            # Aggregate meter readings
+            # Aggregate meter readings and retain raw items for trend building
             items = meters_response.items
             if items:
+                meters_items_raw = [r.to_dict() for r in items]
                 total_consumption = sum(
-                    _safe_float(r.to_dict().get("consumption_kw")) for r in items
+                    _safe_float(r.get("consumption_kw")) for r in meters_items_raw
                 )
                 total_production = sum(
-                    _safe_float(r.to_dict().get("production_kw")) for r in items
+                    _safe_float(r.get("production_kw")) for r in meters_items_raw
                 )
 
-                # consumption_kw / production_kw are already kWh per 15-min interval
-                # (despite the _kw column name), so the period total is the plain
-                # sum of the interval values — no × 0.25 conversion (that quartered
-                # the figures and made them inconsistent with the community column,
-                # which sums interval kWh directly).
-                #
-                # These are grid-exchange values: consumption_kw = grid import,
-                # production_kw = grid export (M1 meter at the POD). The panel
-                # labels them Import/Export. Per-device self-consumption is not
-                # derivable from exchange data; the "shared energy" figure is
-                # filled below from the virtual-consumption allocation.
                 production_kwh = total_production
                 consumption_kwh = total_consumption
                 user_data = {
@@ -185,9 +176,10 @@ async def overview(
             )
 
     # -------------------------------------------------------------------------
-    # Fetch per-device trend using rec_virtual_consumption_per_device_15m
+    # Fetch per-device virtual consumption for shared energy allocation
     # -------------------------------------------------------------------------
     user_trend: list[dict] = []
+    virtual_items_raw: list[dict] = []
     if len(device_ids) > 0:
         try:
             device_id = device_ids[0]
@@ -201,19 +193,10 @@ async def overview(
                 },
             )
             if user_trend_response and user_trend_response.count > 0:
-                trend_items = [item.to_dict() for item in user_trend_response.items]
-                user_trend = _build_user_daily_trend(
-                    trend_items,
-                    trend_start,
-                    now,
-                )
-                # "Shared energy" = this device's slice of the community's
-                # virtually self-consumed energy (energia condivisa) — the
-                # CER-meaningful per-device figure; physical self-consumption
-                # is not measurable from grid-exchange (M1) data.
+                virtual_items_raw = [item.to_dict() for item in user_trend_response.items]
                 shared_kwh = sum(
                     _safe_float(item.get("virtual_consumption_kwh"))
-                    for item in trend_items
+                    for item in virtual_items_raw
                 )
                 user_data["self_consumption_kwh"] = shared_kwh
                 user_data["self_consumption_rate"] = _compute_self_consumption_rate(
@@ -226,6 +209,12 @@ async def overview(
                 participant_id,
                 exc,
             )
+
+    # Build user daily trend from meters_data (import/export) + virtual consumption (shared energy)
+    if meters_items_raw or virtual_items_raw:
+        user_trend = _build_user_daily_trend_merged(
+            meters_items_raw, virtual_items_raw, trend_start, now,
+        )
 
     # -------------------------------------------------------------------------
     # Fetch REC-level self-consumption using rec_self_consumption value fetcher
@@ -289,6 +278,7 @@ async def overview(
                     "production_kwh": None,
                     "consumption_kwh": None,
                     "self_consumption_kwh": None,
+                    "surplus_kwh": None,
                 }
             )
 
@@ -302,64 +292,68 @@ async def overview(
     )
 
 
-def _build_user_daily_trend(
-    items: list[dict],
+def _parse_date_key(ts_str: Any) -> str | None:
+    """Extract YYYY-MM-DD date key from a timestamp string or datetime."""
+    if not ts_str:
+        return None
+    try:
+        if isinstance(ts_str, str):
+            ts = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
+        else:
+            ts = ts_str
+        return ts.date().isoformat()
+    except (ValueError, AttributeError):
+        return None
+
+
+def _build_user_daily_trend_merged(
+    meter_items: list[dict],
+    virtual_items: list[dict],
     start: datetime,
     end: datetime,
 ) -> list[dict]:
-    """Build daily user trend from 15-min rec_virtual_consumption_per_device_15m data.
-
-    Maps: consumption_kwh → consumption_kwh, virtual_consumption_kwh → self_consumption_kwh.
-    production_kwh is not available in this table (set to None).
-    """
+    """Build daily user trend from meters_data (import/export) and virtual consumption (shared energy)."""
     from collections import defaultdict
 
     num_days = max(1, (end.date() - start.date()).days + 1)
 
-    daily_data: dict[str, dict[str, float]] = defaultdict(
-        lambda: {"consumption_kwh": 0.0, "self_consumption_kwh": 0.0}
+    meter_daily: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"consumption_kwh": 0.0, "production_kwh": 0.0}
     )
-
-    for item in items:
-        ts_str = item.get("ts")
-        if not ts_str:
+    for item in meter_items:
+        date_key = _parse_date_key(item.get("ts"))
+        if not date_key:
             continue
-        try:
-            if isinstance(ts_str, str):
-                ts = datetime.fromisoformat(ts_str.replace(" ", "T").split("+")[0])
-            else:
-                ts = ts_str
-            date_key = ts.date().isoformat()
-        except (ValueError, AttributeError):
-            continue
+        meter_daily[date_key]["consumption_kwh"] += _safe_float(item.get("consumption_kw"))
+        meter_daily[date_key]["production_kwh"] += _safe_float(item.get("production_kw"))
 
-        daily_data[date_key]["consumption_kwh"] += _safe_float(item.get("consumption_kwh"))
-        daily_data[date_key]["self_consumption_kwh"] += _safe_float(
-            item.get("virtual_consumption_kwh")
-        )
+    virtual_daily: dict[str, float] = defaultdict(float)
+    for item in virtual_items:
+        date_key = _parse_date_key(item.get("ts"))
+        if not date_key:
+            continue
+        virtual_daily[date_key] += _safe_float(item.get("virtual_consumption_kwh"))
 
     trend = []
     base = end.date()
     for d in range(num_days):
         day = (base - timedelta(days=(num_days - 1 - d))).isoformat()
-        if day in daily_data:
-            trend.append(
-                {
-                    "date": day,
-                    "production_kwh": None,
-                    "consumption_kwh": daily_data[day]["consumption_kwh"],
-                    "self_consumption_kwh": daily_data[day]["self_consumption_kwh"],
-                }
-            )
+        has_meter = day in meter_daily
+        has_virtual = day in virtual_daily
+        if has_meter or has_virtual:
+            trend.append({
+                "date": day,
+                "consumption_kwh": meter_daily[day]["consumption_kwh"] if has_meter else None,
+                "production_kwh": meter_daily[day]["production_kwh"] if has_meter else None,
+                "self_consumption_kwh": virtual_daily[day] if has_virtual else None,
+            })
         else:
-            trend.append(
-                {
-                    "date": day,
-                    "production_kwh": None,
-                    "consumption_kwh": None,
-                    "self_consumption_kwh": None,
-                }
-            )
+            trend.append({
+                "date": day,
+                "consumption_kwh": None,
+                "production_kwh": None,
+                "self_consumption_kwh": None,
+            })
 
     return trend
 
@@ -417,20 +411,20 @@ def _build_daily_trend(
     for d in range(num_days):
         day = (base - timedelta(days=(num_days - 1 - d))).isoformat()
         if day in daily_data:
-            trend.append(
-                {
-                    "date": day,
-                    **daily_data[day],
-                }
-            )
+            dd = daily_data[day]
+            surplus = max(0.0, dd["production_kwh"] - dd["consumption_kwh"])
+            trend.append({
+                "date": day,
+                **dd,
+                "surplus_kwh": surplus,
+            })
         else:
-            trend.append(
-                {
-                    "date": day,
-                    "production_kwh": None,
-                    "consumption_kwh": None,
-                    "self_consumption_kwh": None,
-                }
-            )
+            trend.append({
+                "date": day,
+                "production_kwh": None,
+                "consumption_kwh": None,
+                "self_consumption_kwh": None,
+                "surplus_kwh": None,
+            })
 
     return trend
