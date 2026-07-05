@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.13.0 (2026-07-05)
+
+### Bug Fixes
+
+- Review trends data in overview api
+  ([`3fd1fd4`](https://github.com/celine-eu/celine-webapp/commit/3fd1fd4e703f19a90f7e783caf95d403b156223d))
+
+### Features
+
+- Update weather schema
+  ([`6ade9c5`](https://github.com/celine-eu/celine-webapp/commit/6ade9c5dcca4c8fe4b66da72fb2e11d54b316065))
+
+
 ## v1.12.0 (2026-07-03)
 
 ### Features
