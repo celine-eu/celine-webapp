@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.13.1 (2026-07-05)
+
+### Bug Fixes
+
+- Improve forecast view
+  ([`1c6672d`](https://github.com/celine-eu/celine-webapp/commit/1c6672d9ea6cc1ba22c7d9e28d13553993ca5b05))
+
+
 ## v1.13.0 (2026-07-05)
 
 ### Bug Fixes
