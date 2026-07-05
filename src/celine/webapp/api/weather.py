@@ -131,6 +131,8 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
             uvi=_float(r.get("uvi")),
             clouds=_int(r.get("clouds")),
             wind_deg=_int(r.get("wind_deg")),
+            wind_speed_ms=r.get("wind_speed_ms"),
+            wind_gust_ms=r.get("wind_gust_ms"),
             weather_main=_str(r.get("weather_main")),
             weather_description=_str(r.get("weather_description")),
             sunrise=_str(r.get("sunrise")),
@@ -175,6 +177,9 @@ async def weather(user: UserDep, dt: DTDep) -> WeatherResponse:
                     start_ts=_str(r.get("start_ts")),
                     end_ts=_str(r.get("end_ts")),
                     description=_str(r.get("description")),
+                    severity=r.get("severity"),
+                    urgency=r.get("urgency"),
+                    headline=r.get("headline"),
                 )
             )
 

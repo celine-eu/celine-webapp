@@ -183,13 +183,15 @@ class CommunityMetaResponse(BaseModel):
 class WeatherCurrent(BaseModel):
     temp: float
     humidity: int
-    uvi: float
+    uvi: float = 0.0
     clouds: int
     wind_deg: int
+    wind_speed_ms: Optional[float] = None
+    wind_gust_ms: Optional[float] = None
     weather_main: str
     weather_description: str
-    sunrise: str
-    sunset: str
+    sunrise: str = ""
+    sunset: str = ""
 
 
 class WeatherDayItem(BaseModel):
@@ -197,21 +199,24 @@ class WeatherDayItem(BaseModel):
     temp_min: float
     temp_max: float
     temp_day: float
-    pop: float
+    pop: float = 0.0
     rain: Optional[float] = None
-    clouds: int
-    uvi: float
-    weather_main: str
-    weather_description: str
+    clouds: int = 0
+    uvi: float = 0.0
+    weather_main: str = ""
+    weather_description: str = ""
     summary: Optional[str] = None
 
 
 class WeatherAlertItem(BaseModel):
     event: str
-    sender_name: str
+    sender_name: str = ""
     start_ts: str
-    end_ts: str
-    description: str
+    end_ts: str = ""
+    description: str = ""
+    severity: Optional[str] = None
+    urgency: Optional[str] = None
+    headline: Optional[str] = None
 
 
 class WeatherIrradianceItem(BaseModel):
