@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from celine.webapp.api.deps import DTDep, UserDep
 from celine.webapp.api.schemas import ForecastHourItem, ForecastResponse
@@ -66,8 +66,16 @@ def _sort_dedup(items: list[ForecastHourItem]) -> list[ForecastHourItem]:
 
 
 @router.get("/forecast", response_model=ForecastResponse)
-async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
-    """Return today's (05:00–00:00) per-device and REC-level energy forecasts."""
+async def forecast(
+    user: UserDep,
+    dt: DTDep,
+    days: int = Query(1, ge=1, le=2),
+) -> ForecastResponse:
+    """Return per-device and REC-level energy forecasts.
+
+    ``days`` controls how many days of forecast to return (1 = today only,
+    2 = today + tomorrow).  The window always starts at today 05:00 UTC.
+    """
 
     participant = await dt.participants.profile(user.sub)
     community_id = participant.membership.community.key
@@ -84,10 +92,10 @@ async def forecast(user: UserDep, dt: DTDep) -> ForecastResponse:
     except Exception as exc:
         logger.warning("Failed to fetch assets for %s: %s", user.sub, exc)
 
-    # Time window: today 05:00 → tomorrow 00:00
+    # Time window: today 05:00 → (today + days) 00:00
     tz = timezone.utc
     today_05 = datetime.now(tz).replace(hour=5, minute=0, second=0, microsecond=0)
-    tomorrow_midnight = (today_05 + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_midnight = (today_05 + timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     async def fetch_meter_forecast():
         try:

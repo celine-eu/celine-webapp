@@ -41,7 +41,9 @@ def _int(val: Any, default: int = 0) -> int:
         return default
 
 
-def _normalize_temp(val: Any) -> float:
+def _normalize_temp(val: Any) -> float | None:
+    if val is None:
+        return None
     t = _float(val)
     if t > 100:  # likely stored as Kelvin
         return round(t - 273.15, 1)

@@ -181,7 +181,7 @@ class CommunityMetaResponse(BaseModel):
 # ─── Weather schemas ─────────────────────────────────────────────────────────
 
 class WeatherCurrent(BaseModel):
-    temp: float
+    temp: Optional[float] = None
     humidity: int
     uvi: float = 0.0
     clouds: int
@@ -196,9 +196,9 @@ class WeatherCurrent(BaseModel):
 
 class WeatherDayItem(BaseModel):
     date: str
-    temp_min: float
-    temp_max: float
-    temp_day: float
+    temp_min: Optional[float] = None
+    temp_max: Optional[float] = None
+    temp_day: Optional[float] = None
     pop: float = 0.0
     rain: Optional[float] = None
     clouds: int = 0
