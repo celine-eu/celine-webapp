@@ -152,10 +152,10 @@ async def overview(
             if items:
                 meters_items_raw = [r.to_dict() for r in items]
                 total_consumption = sum(
-                    _safe_float(r.get("consumption_kw")) for r in meters_items_raw
+                    _safe_float(r.get("consumption_kwh")) for r in meters_items_raw
                 )
                 total_production = sum(
-                    _safe_float(r.get("production_kw")) for r in meters_items_raw
+                    _safe_float(r.get("production_kwh")) for r in meters_items_raw
                 )
 
                 production_kwh = total_production
@@ -236,13 +236,13 @@ async def overview(
             if items:
                 # Sum up hourly values
                 total_rec_consumption = sum(
-                    _safe_float(r.to_dict().get("total_consumption_kw")) for r in items
+                    _safe_float(r.to_dict().get("total_consumption_kwh")) for r in items
                 )
                 total_rec_production = sum(
-                    _safe_float(r.to_dict().get("total_production_kw")) for r in items
+                    _safe_float(r.to_dict().get("total_production_kwh")) for r in items
                 )
                 total_rec_self_consumption = sum(
-                    _safe_float(r.to_dict().get("self_consumption_kw")) for r in items
+                    _safe_float(r.to_dict().get("self_consumption_kwh")) for r in items
                 )
 
                 rec_data = {
@@ -324,8 +324,8 @@ def _build_user_daily_trend_merged(
         date_key = _parse_date_key(item.get("ts"))
         if not date_key:
             continue
-        meter_daily[date_key]["consumption_kwh"] += _safe_float(item.get("consumption_kw"))
-        meter_daily[date_key]["production_kwh"] += _safe_float(item.get("production_kw"))
+        meter_daily[date_key]["consumption_kwh"] += _safe_float(item.get("consumption_kwh"))
+        meter_daily[date_key]["production_kwh"] += _safe_float(item.get("production_kwh"))
 
     virtual_daily: dict[str, float] = defaultdict(float)
     for item in virtual_items:
@@ -396,13 +396,13 @@ def _build_daily_trend(
             continue
 
         daily_data[date_key]["consumption_kwh"] += _safe_float(
-            item.get("total_consumption_kw")
+            item.get("total_consumption_kwh")
         )
         daily_data[date_key]["production_kwh"] += _safe_float(
-            item.get("total_production_kw")
+            item.get("total_production_kwh")
         )
         daily_data[date_key]["self_consumption_kwh"] += _safe_float(
-            item.get("self_consumption_kw")
+            item.get("self_consumption_kwh")
         )
 
     # Build sorted trend list for the requested period
