@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.13.2 (2026-07-08)
+
+### Bug Fixes
+
+- Correct column names
+  ([`d3e6d96`](https://github.com/celine-eu/celine-webapp/commit/d3e6d96aae2930ea42b725802d42290bba2999db))
+
+
 ## v1.13.1 (2026-07-05)
 
 ### Bug Fixes

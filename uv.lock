@@ -998,7 +998,7 @@ wheels = [
 
 [[package]]
 name = "rec-webapp-bff"
-version = "1.13.1"
+version = "1.13.2"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
