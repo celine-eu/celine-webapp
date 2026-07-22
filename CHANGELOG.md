@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.14.0 (2026-07-22)
+
+### Features
+
+- Added the option to select a time period
+  ([`af4c4b7`](https://github.com/celine-eu/celine-webapp/commit/af4c4b75ec4075e8c66477d3adc4c69ce0727b36))
+
+- Season-scoped gamification + nullable suggestion confidence
+  ([`e7cd4cd`](https://github.com/celine-eu/celine-webapp/commit/e7cd4cd75ecf0621086757cd6dec07cb4f6cd94b))
+
+
 ## v1.13.2 (2026-07-08)
 
 ### Bug Fixes
