@@ -1,4 +1,7 @@
 """Test user API endpoints."""
+from datetime import datetime, timedelta, timezone
+
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -136,6 +139,48 @@ def test_overview_endpoint(client: TestClient, auth_headers: dict):
     assert "rec" in data
     assert "trend" in data
     assert len(data["trend"]) == 7
+
+
+def test_overview_window_accepts_custom_range():
+    """Test custom overview date windows are inclusive for charts."""
+    from celine.webapp.api.overview import _resolve_overview_window
+
+    end = datetime.now(timezone.utc).date() - timedelta(days=1)
+    start = end - timedelta(days=9)
+
+    query_start, query_end, trend_end, range_days, period = _resolve_overview_window(
+        days=7,
+        start_date=start,
+        end_date=end,
+    )
+
+    assert query_start.date() == start
+    assert query_end.date() == end + timedelta(days=1)
+    assert trend_end.date() == end
+    assert range_days == 10
+    assert period == f"{start.isoformat()} to {end.isoformat()}"
+
+
+def test_overview_window_rejects_ranges_longer_than_one_year():
+    """Test custom overview ranges are capped at one year."""
+    from fastapi import HTTPException
+    from celine.webapp.api.overview import _resolve_overview_window
+
+    end = datetime.now(timezone.utc).date() - timedelta(days=1)
+    start = end - timedelta(days=366)
+
+    with pytest.raises(HTTPException) as exc:
+        _resolve_overview_window(days=7, start_date=start, end_date=end)
+
+    assert exc.value.status_code == 400
+
+
+def test_overview_uses_daily_rec_fetcher_only_for_large_ranges():
+    """Test REC self-consumption fetcher selection keeps short ranges unchanged."""
+    from celine.webapp.api.overview import _rec_self_consumption_fetcher_id
+
+    assert _rec_self_consumption_fetcher_id(30) == "rec_self_consumption"
+    assert _rec_self_consumption_fetcher_id(31) == "rec_self_consumption_daily"
 
 
 def test_notifications_list(client: TestClient, auth_headers: dict):

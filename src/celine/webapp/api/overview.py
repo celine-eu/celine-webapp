@@ -1,7 +1,7 @@
 # celine/webapp/api/overview.py
 """Overview and dashboard routes."""
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from celine.sdk.dt.community import DTApiError
@@ -17,6 +17,9 @@ from celine.webapp.api.schemas import OverviewResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["overview"])
+
+MAX_OVERVIEW_RANGE_DAYS = 366
+DAILY_REC_FETCHER_THRESHOLD_DAYS = 30
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -41,12 +44,92 @@ def _compute_self_consumption_rate(
     return self_consumption / consumption
 
 
+def _resolve_overview_window(
+    days: int,
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[datetime, datetime, datetime, int, str]:
+    """Resolve overview query and display windows.
+
+    The query end can be exclusive midnight for historical custom ranges, while
+    the display end is the last date that should appear in daily trend charts.
+    """
+    now = datetime.now(timezone.utc)
+
+    if start_date is not None or end_date is not None:
+        if start_date is None or end_date is None:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date and end_date must be provided together",
+            )
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date must be before or equal to end_date",
+            )
+        if end_date > now.date():
+            raise HTTPException(
+                status_code=400,
+                detail="end_date cannot be in the future",
+            )
+
+        range_days = (end_date - start_date).days + 1
+        if range_days > MAX_OVERVIEW_RANGE_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Date range cannot exceed {MAX_OVERVIEW_RANGE_DAYS} days",
+            )
+
+        query_start = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+        end_exclusive = datetime.combine(
+            end_date + timedelta(days=1),
+            time.min,
+            tzinfo=timezone.utc,
+        )
+        query_end = min(end_exclusive, now) if end_date == now.date() else end_exclusive
+        trend_end = datetime.combine(end_date, time.max, tzinfo=timezone.utc)
+        if end_date == now.date():
+            trend_end = now
+
+        return (
+            query_start,
+            query_end,
+            trend_end,
+            range_days,
+            f"{start_date.isoformat()} to {end_date.isoformat()}",
+        )
+
+    range_days = days
+    start = now.date() - timedelta(days=range_days - 1)
+    query_start = datetime.combine(start, time.min, tzinfo=timezone.utc)
+    return query_start, now, now, range_days, f"Last {range_days} days"
+
+
+def _rec_self_consumption_fetcher_id(range_days: int) -> str:
+    if range_days > DAILY_REC_FETCHER_THRESHOLD_DAYS:
+        return "rec_self_consumption_daily"
+    return "rec_self_consumption"
+
+
 @router.get("/overview", response_model=OverviewResponse)
 async def overview(
     user: UserDep,
     db: DbDep,
     dt: DTDep,
-    days: int = Query(7, ge=7, le=30, description="Number of days to include in the trend (7 or 30)"),
+    days: int = Query(
+        7,
+        ge=1,
+        le=365,
+        description="Number of days to include when start_date/end_date are not provided",
+    ),
+    start_date: date | None = Query(
+        None,
+        description="Inclusive start date for a custom overview range (YYYY-MM-DD)",
+    ),
+    end_date: date | None = Query(
+        None,
+        description="Inclusive end date for a custom overview range (YYYY-MM-DD)",
+    ),
 ) -> OverviewResponse:
     """Get overview dashboard data from the Digital Twin.
 
@@ -123,11 +206,14 @@ async def overview(
     trend: list[dict] = []
 
     # Time range for queries
-    now = datetime.now(timezone.utc)
-    trend_start = now - timedelta(days=days)
+    trend_start, query_end, trend_end, range_days, period = _resolve_overview_window(
+        days,
+        start_date,
+        end_date,
+    )
 
     # -------------------------------------------------------------------------
-    # Fetch user meter data over the selected period (7 or 30 days) using the
+    # Fetch user meter data over the selected period using the
     # meters_data value fetcher, so "Your contribution" matches the day toggle
     # and the community totals column (previously this used a fixed 12h window).
     # -------------------------------------------------------------------------
@@ -143,7 +229,7 @@ async def overview(
                 payload={
                     "device_id": device_id,
                     "start": trend_start.isoformat(),
-                    "end": now.isoformat(),
+                    "end": query_end.isoformat(),
                 },
             )
 
@@ -189,7 +275,7 @@ async def overview(
                 payload={
                     "device_id": device_id,
                     "start": trend_start.isoformat(),
-                    "end": now.isoformat(),
+                    "end": query_end.isoformat(),
                 },
             )
             if user_trend_response and user_trend_response.count > 0:
@@ -213,7 +299,7 @@ async def overview(
     # Build user daily trend from meters_data (import/export) + virtual consumption (shared energy)
     if meters_items_raw or virtual_items_raw:
         user_trend = _build_user_daily_trend_merged(
-            meters_items_raw, virtual_items_raw, trend_start, now,
+            meters_items_raw, virtual_items_raw, trend_start, trend_end,
         )
 
     # -------------------------------------------------------------------------
@@ -221,13 +307,13 @@ async def overview(
     # -------------------------------------------------------------------------
     if community_id:
         try:
-            # POST /communities/it/{community_id}/values/rec_self_consumption
+            rec_fetcher_id = _rec_self_consumption_fetcher_id(range_days)
             rec_response = await dt.communities.fetch_values(
                 community_id=community_id,
-                fetcher_id="rec_self_consumption",
+                fetcher_id=rec_fetcher_id,
                 payload={
                     "start": trend_start.isoformat(),
-                    "end": now.isoformat(),
+                    "end": query_end.isoformat(),
                 },
             )
 
@@ -257,7 +343,7 @@ async def overview(
 
                 # Build trend from the same data (group by day)
                 trend = _build_daily_trend(
-                    [item.to_dict() for item in items], trend_start, now
+                    [item.to_dict() for item in items], trend_start, trend_end
                 )
 
         except Exception as exc:
@@ -269,9 +355,9 @@ async def overview(
 
     # Fallback trend if DT didn't provide data
     if not trend:
-        base = datetime.now(timezone.utc).date()
-        for d in range(days):
-            day = (base - timedelta(days=(days - 1 - d))).isoformat()
+        base = trend_end.date()
+        for d in range(range_days):
+            day = (base - timedelta(days=(range_days - 1 - d))).isoformat()
             trend.append(
                 {
                     "date": day,
@@ -283,7 +369,7 @@ async def overview(
             )
 
     return OverviewResponse(
-        period=f"Last {days} days",
+        period=period,
         user=user_data,
         rec=rec_data,
         trend=trend,

@@ -20,6 +20,10 @@ Record the user's acceptance of the current terms version.
 
 Returns the energy overview for the authenticated user's community. Aggregates data from the Digital Twin.
 
+Query parameters:
+- `days`: relative range in days when no custom dates are provided, default `7`, maximum `365`.
+- `start_date` and `end_date`: inclusive custom date range in `YYYY-MM-DD` format, maximum 1 year. Both must be provided together.
+
 ---
 
 ## Weather

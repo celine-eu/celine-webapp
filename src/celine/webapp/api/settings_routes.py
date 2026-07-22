@@ -12,17 +12,24 @@ from celine.webapp.db.user_settings import load_user_settings, update_user_setti
 router = APIRouter(prefix="/api", tags=["settings"])
 logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SUPPORTED_NOTIFICATION_LANGS = {"it", "en", "es"}
+
+
+def _normalize_lang(lang: str | None) -> str | None:
+    if not lang:
+        return None
+    base = lang.strip().lower().split("-")[0]
+    if base in SUPPORTED_NOTIFICATION_LANGS:
+        return base
+    return None
 
 
 def _preferred_lang(request: Request) -> str | None:
     header = request.headers.get("accept-language", "")
     for chunk in header.split(","):
-        lang = chunk.split(";")[0].strip().lower()
-        if not lang:
-            continue
-        base = lang.split("-")[0]
-        if base in {"it", "en", "es"}:
-            return base
+        normalized = _normalize_lang(chunk.split(";")[0])
+        if normalized:
+            return normalized
     return None
 
 
@@ -81,6 +88,7 @@ async def update_settings(
     user: UserDep,
     db: DbDep,
     nudging_client: NudgingDep,
+    lang: str | None = None,
 ) -> SettingsModel:
     """Update user settings."""
 
@@ -108,6 +116,7 @@ async def update_settings(
             max_per_day=model.notifications.limit,
             channel_email=model.notifications.email_enabled,
             email=model.notifications.email,
+            lang=_normalize_lang(lang) or _preferred_lang(request),
             enabled_notification_kinds=[
                 item.kind for item in model.notifications.kinds if item.enabled
             ],
@@ -123,6 +132,7 @@ async def update_settings(
                 max_per_day=model.notifications.limit,
                 channel_email=model.notifications.email_enabled,
                 email=model.notifications.email,
+                lang=_normalize_lang(lang) or _preferred_lang(request),
             )
         except Exception as fallback_exc:
             logger.error(
