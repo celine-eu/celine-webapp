@@ -265,7 +265,7 @@ class SuggestionItem(BaseModel):
     impact_kwh_estimated: float | None = None
     reward_points: int | None = None
     community_kwh: float = 0.0
-    confidence: float = 0.75
+    confidence: float | None = None
 
 
 class SuggestionRespondRequest(BaseModel):
@@ -305,7 +305,7 @@ class RankingInfo(BaseModel):
     position: int
     total_members: int
     percentile: int  # top X% (e.g. 10 means "top 10%")
-    period: Literal["day", "week", "month"]
+    period: Literal["day", "week", "month", "season"]
 
 
 class DailyPointsItem(BaseModel):
@@ -322,6 +322,12 @@ class GamificationResponse(BaseModel):
     pending_commitment: Optional[FlexibilityCommitmentItem] = None
     ranking: Optional[RankingInfo] = None
     daily_points: list[DailyPointsItem] = []
+    # Season context (from rec_points_leaderboard). None in fallback mode
+    # (old DT deployed / device not in fleet) — the frontend hides season UI then.
+    season_start: Optional[str] = None   # ISO date, inclusive
+    season_end: Optional[str] = None     # ISO date, exclusive (next season start)
+    season_base_points: Optional[int] = None
+    season_bonus_points: Optional[int] = None
 
 
 # ─── Commitment history schemas ────────────────────────────────────────────────

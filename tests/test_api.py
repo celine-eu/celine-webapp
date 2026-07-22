@@ -202,3 +202,129 @@ def test_suggestion_item_allows_missing_personal_fields() -> None:
     )
     assert item.impact_kwh_estimated is None
     assert item.reward_points is None
+
+
+def test_suggestion_item_confidence_nullable() -> None:
+    """Test that SuggestionItem.confidence defaults to None (no injected 0.75 default)."""
+    from celine.webapp.api.schemas import SuggestionItem
+
+    item = SuggestionItem(
+        id="w1", suggestion_type="shift-consumption",
+        period_start="2026-07-21T09:00:00", period_end="2026-07-21T12:00:00",
+        from_period="morning", clock_range="09:00–12:00", to_is_tomorrow=False,
+        to_period="late_morning", to_time="09:00",
+    )
+    assert item.confidence is None
+    assert SuggestionItem(**{**item.model_dump(), "confidence": 0.62}).confidence == 0.62
+
+
+# ─── Season points / leaderboard mapping (BFF unit tests, no DB) ──────────────
+
+def _leaderboard_row(**overrides) -> dict:
+    row = {
+        "device_id": "c2g-57CFA0F18",
+        "season_start": "2026-07-01",
+        "season_end": "2026-09-01",
+        "season_base_points": 120,
+        "season_bonus_points": 30,
+        "season_points": 150,
+        "season_rank": 3,
+        "total_members": 14,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_season_summary_maps_leaderboard_row() -> None:
+    from celine.webapp.api.gamification import _season_summary_from_row
+
+    summary = _season_summary_from_row(_leaderboard_row())
+    assert summary is not None
+    assert summary.total_points == 150
+    assert summary.season_base_points == 120
+    assert summary.season_bonus_points == 30
+    assert summary.season_start == "2026-07-01"
+    assert summary.season_end == "2026-09-01"
+    assert summary.ranking.position == 3
+    assert summary.ranking.total_members == 14
+    assert summary.ranking.percentile == 22  # ceil(3 / 14 * 100)
+    assert summary.ranking.period == "season"
+
+
+def test_season_summary_percentile_boundaries() -> None:
+    from celine.webapp.api.gamification import _season_summary_from_row
+
+    first = _season_summary_from_row(_leaderboard_row(season_rank=1, total_members=14))
+    last = _season_summary_from_row(_leaderboard_row(season_rank=14, total_members=14))
+    solo = _season_summary_from_row(_leaderboard_row(season_rank=1, total_members=1))
+    assert first is not None and first.ranking.percentile == 8   # ceil(1/14*100)
+    assert last is not None and last.ranking.percentile == 100
+    assert solo is not None and solo.ranking.percentile == 100
+
+
+def test_season_summary_rejects_malformed_row() -> None:
+    from celine.webapp.api.gamification import _season_summary_from_row
+
+    assert _season_summary_from_row({}) is None
+    assert _season_summary_from_row(_leaderboard_row(season_rank=None)) is None
+    incomplete = _leaderboard_row()
+    del incomplete["total_members"]
+    assert _season_summary_from_row(incomplete) is None
+
+
+def test_fetch_leaderboard_row_falls_back_on_error_and_empty() -> None:
+    import asyncio
+    from celine.webapp.api.gamification import _fetch_leaderboard_row
+
+    class _Item:
+        def __init__(self, d: dict) -> None:
+            self._d = d
+
+        def to_dict(self) -> dict:
+            return self._d
+
+    class _Result:
+        def __init__(self, rows: list[dict]) -> None:
+            self.count = len(rows)
+            self.items = [_Item(r) for r in rows]
+
+    class _Participants:
+        def __init__(self, result=None, exc: Exception | None = None) -> None:
+            self._result = result
+            self._exc = exc
+
+        async def fetch_values(self, **kwargs):
+            if self._exc:
+                raise self._exc
+            return self._result
+
+    class _DT:
+        def __init__(self, participants: "_Participants") -> None:
+            self.participants = participants
+
+    raising = _DT(_Participants(exc=RuntimeError("old DT deployed")))
+    empty = _DT(_Participants(result=_Result([])))
+    ok = _DT(_Participants(result=_Result([_leaderboard_row()])))
+
+    assert asyncio.run(_fetch_leaderboard_row(raising, "user-1", "c2g-x")) is None
+    assert asyncio.run(_fetch_leaderboard_row(empty, "user-1", "c2g-x")) is None
+    row = asyncio.run(_fetch_leaderboard_row(ok, "user-1", "c2g-x"))
+    assert row is not None and row["season_points"] == 150
+
+
+def test_gamification_response_season_fields_default_none() -> None:
+    from celine.webapp.api.schemas import GamificationResponse
+
+    resp = GamificationResponse(total_points=0, level=1, next_level_at=100, actions_taken=0)
+    assert resp.season_start is None
+    assert resp.season_end is None
+    assert resp.season_base_points is None
+    assert resp.season_bonus_points is None
+    assert resp.ranking is None
+
+
+def test_ranking_info_accepts_season_period() -> None:
+    from celine.webapp.api.schemas import RankingInfo
+
+    info = RankingInfo(position=1, total_members=2, percentile=50, period="season")
+    assert info.period == "season"

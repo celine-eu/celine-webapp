@@ -2,9 +2,9 @@
 """Gamification routes."""
 import logging
 import math
-from datetime import datetime, timezone
 
 from fastapi import APIRouter
+from pydantic import BaseModel
 from sqlalchemy import select, func
 
 from celine.webapp.api.deps import DbDep, DTDep, FlexibilityDep, UserDep
@@ -40,14 +40,86 @@ def _next_level_at(total_points: int) -> int:
     return _level(total_points) * POINTS_PER_LEVEL
 
 
+class SeasonSummary(BaseModel):
+    """Season-scoped totals + anonymous rank mapped from a rec_points_leaderboard row."""
+
+    total_points: int
+    season_base_points: int
+    season_bonus_points: int
+    season_start: str
+    season_end: str
+    ranking: RankingInfo
+
+
+def _season_summary_from_row(row: dict) -> SeasonSummary | None:
+    """Map a rec_points_leaderboard row to a SeasonSummary.
+
+    Args:
+        row: Row dict from the rec_points_leaderboard DT fetcher.
+
+    Returns:
+        The mapped summary, or None when the row is missing/malformed so the
+        caller can fall back to the legacy all-time behavior.
+    """
+    try:
+        position = int(row["season_rank"])
+        total = max(int(row["total_members"]), 1)
+        return SeasonSummary(
+            total_points=int(row["season_points"]),
+            season_base_points=int(row["season_base_points"]),
+            season_bonus_points=int(row["season_bonus_points"]),
+            season_start=str(row["season_start"]),
+            season_end=str(row["season_end"]),
+            ranking=RankingInfo(
+                position=position,
+                total_members=total,
+                percentile=math.ceil(position / total * 100),
+                period="season",
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("rec_points_leaderboard row unusable, falling back: %s", exc)
+        return None
+
+
+async def _fetch_leaderboard_row(dt, participant_id: str, device_id: str) -> dict | None:
+    """Fetch the participant's current-season rec_points_leaderboard row.
+
+    Returns None on any failure or empty result (old DT deployed, device not in
+    the fleet, brand-new device before the first pipeline run) — the caller then
+    falls back to summing rec_participant_points.
+    """
+    try:
+        res = await dt.participants.fetch_values(
+            participant_id=participant_id,
+            fetcher_id="rec_points_leaderboard",
+            payload={"device_id": device_id},
+        )
+    except Exception as exc:
+        logger.warning("rec_points_leaderboard fetch failed (fallback to all-time sum): %s", exc)
+        return None
+    if res and res.count > 0:
+        return res.items[0].to_dict()
+    return None
+
+
 @router.get("/gamification", response_model=GamificationResponse)
 async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationResponse:
-    """Return user's total points, level, badges, action count and real ranking.
+    """Return user's season points, level, badges, action count and anonymous rank.
 
-    Points come from rec_participant_points (the pipeline-computed source of
-    truth that already includes baseline-validated bonus).  The flexibility-api
-    reward_points_actual is NOT used here because the settlement formula does
-    not compare against baseline, producing inflated values.
+    Headline total_points, level and next_level_at are scoped to the current
+    season (from rec_points_leaderboard), so the level ladder resets each season
+    (POINTS_PER_LEVEL = 100, applied to season points). Ranking is the
+    participant's own anonymous season rank (period="season").
+
+    When the season leaderboard row is unavailable or malformed (old DT
+    deployed, device not in the fleet, brand-new device), the endpoint falls
+    back to the legacy all-time behavior: total_points = sum of
+    rec_participant_points daily points and ranking = None. Points come from
+    rec_participant_points (the pipeline-computed source of truth that already
+    includes baseline-validated bonus). The flexibility-api reward_points_actual
+    is NOT used here because the settlement formula does not compare against
+    baseline, producing inflated values.
     """
     async with db as session:
         badge_rows = (
@@ -87,6 +159,13 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
     except Exception as exc:
         logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
 
+    # Season totals + anonymous rank from rec_points_leaderboard (one current-season row).
+    season: SeasonSummary | None = None
+    if device_id:
+        row = await _fetch_leaderboard_row(dt, user.sub, device_id)
+        if row is not None:
+            season = _season_summary_from_row(row)
+
     # Daily points from rec_participant_points — the pipeline-computed source of
     # truth that includes baseline-validated scoring.
     total_points = 0
@@ -115,31 +194,16 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
     else:
         logger.warning("No device_id found for user %s — daily points unavailable", user.sub)
     daily_points.sort(key=lambda x: x.date)
+
+    if season is not None:
+        total_points = season.total_points
+
     logger.info("gamification: user=%s total_points=%d daily_entries=%d", user.sub, total_points, len(daily_points))
 
-    # Community ranking from rec_gamification_summary (today's snapshot).
-    ranking: RankingInfo | None = None
-    if device_id:
-        try:
-            today = datetime.now(timezone.utc).date().isoformat()
-            res = await dt.participants.fetch_values(
-                participant_id=user.sub,
-                fetcher_id="rec_gamification_summary",
-                payload={"device_id": device_id, "date": today},
-            )
-            if res and res.count > 0:
-                d = res.items[0].to_dict()
-                position = int(d.get("rank_position", 1))
-                total = max(int(d.get("total_members", 1)), 1)
-                top_pct = math.ceil(position / total * 100)
-                ranking = RankingInfo(
-                    position=position,
-                    total_members=total,
-                    percentile=top_pct,
-                    period="day",
-                )
-        except Exception as exc:
-            logger.warning("rec_gamification_summary fetch failed: %s", exc)
+    # Ranking comes exclusively from the season leaderboard (anonymous rank, own row
+    # only). The daily rec_gamification_summary fetcher is no longer called here —
+    # in fallback mode the panel simply shows no ranking.
+    ranking: RankingInfo | None = season.ranking if season is not None else None
 
     return GamificationResponse(
         total_points=total_points,
@@ -149,6 +213,10 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
         actions_taken=actions_taken,
         ranking=ranking,
         daily_points=daily_points,
+        season_start=season.season_start if season is not None else None,
+        season_end=season.season_end if season is not None else None,
+        season_base_points=season.season_base_points if season is not None else None,
+        season_bonus_points=season.season_bonus_points if season is not None else None,
     )
 
 
