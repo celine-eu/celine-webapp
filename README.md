@@ -41,6 +41,27 @@ For the participant frontend, see [celine-frontend](https://github.com/celine-eu
 | Feedback | User feedback submission |
 | Health | Service health check |
 
+## Data sharing
+
+A member's dataspace sharing decisions — what the community may do with their
+energy data — are read and changed at `/api/data-sharing`. The onboarding wizard
+can only *grant* such a consent, since it holds no session once somebody is
+approved, so this is where withdrawal lives; GDPR Art. 7(3) requires it to be as
+easy as giving.
+
+Everything is done **as the member**, with their own verifiable credential. The
+service account configured here does one thing: resolve which credential is
+theirs. A service that could grant consent on somebody's behalf would defeat the
+point of recording it.
+
+**Off by default** (`DATA_SHARING_ENABLED`). The dataspace may not be deployed
+for some time, and a screen whose decisions take effect nowhere is worse than no
+screen — so when the flag is off the routes answer `404`, `/api/me` reports
+`data_sharing_enabled: false`, and the UI hides the section entirely.
+
+A member with no dataspace identity — somebody enabled before the integration
+existed — gets `has_identity: false` and an explanation, not an error.
+
 ## CLI
 
 ```bash

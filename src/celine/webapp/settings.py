@@ -74,6 +74,40 @@ class Settings(BaseSettings):
     flexibility_api_url: Optional[str] = "http://host.docker.internal:8017"
     nudging_ingest_scope: str = "nudging.ingest"
 
+    # ── Dataspace data sharing ────────────────────────────────────────────
+    #
+    # Off by default. The dataspace may not be deployed for some time, and a
+    # member seeing a sharing screen that cannot answer is worse than not
+    # seeing one: the whole point of the surface is that a decision recorded
+    # there takes effect.
+    #
+    # When false the API answers 404 and the UI hides the section, so nothing
+    # half-working is exposed.
+    data_sharing_enabled: bool = False
+
+    # Where the member's decisions live. `identity_registry_url` resolves the
+    # subject's DID and credential from their email; the connector holds the
+    # consent rows; provenance serves their own history.
+    identity_registry_url: Optional[str] = "http://host.docker.internal:30005"
+    ds_connector_url: Optional[str] = "http://host.docker.internal:30001"
+    ds_ns_url: Optional[str] = None
+    ds_provenance_url: Optional[str] = "http://host.docker.internal:30000"
+
+    # Service account used only to resolve a member's credential at request
+    # time (identity-registry.resolve). Every consent call is then made with
+    # the member's own credential, never this one.
+    ds_resolve_client_id: str = "svc-celine-webapp"
+    ds_resolve_client_secret: str = ""
+
+    @property
+    def data_sharing_ready(self) -> bool:
+        """Whether the feature is on *and* configured well enough to answer."""
+        return bool(
+            self.data_sharing_enabled
+            and self.identity_registry_url
+            and self.ds_connector_url
+        )
+
     @property
     def resolved_database_url(self) -> str:
         return resolve_local_dev_url(self.database_url)

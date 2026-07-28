@@ -139,7 +139,7 @@ def client(db_session):
 
     def override_get_nudging_client():
         return fake_nudging
-    
+
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_nudging_client] = override_get_nudging_client

@@ -15,6 +15,7 @@ from celine.webapp.api import (
     gamification_router,
     community_router,
     feedback_router,
+    data_sharing_router,
 )
 
 
@@ -24,6 +25,7 @@ def create_api_router() -> APIRouter:
 
     # Include all route modules
     api_router.include_router(user_router)
+    api_router.include_router(data_sharing_router)
     api_router.include_router(overview_router)
     api_router.include_router(notifications_router)
     api_router.include_router(settings_routes_router)

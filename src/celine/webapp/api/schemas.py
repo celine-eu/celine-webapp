@@ -39,6 +39,9 @@ class MeResponse(BaseModel):
     webpush_configured: bool = False
     onboarding_seen: bool = False
     onboarding_seen_pages: list[str] = Field(default_factory=list)
+    # Whether the data-sharing surface exists at all. The UI hides the section
+    # when false rather than showing one that answers 404.
+    data_sharing_enabled: bool = False
 
 
 class OnboardingSeenRequest(BaseModel):
@@ -395,3 +398,31 @@ class FeedbackCreateRequest(BaseModel):
 class FeedbackCreateResponse(BaseModel):
     id: str
     created_at: datetime
+
+
+# ── Data sharing ──────────────────────────────────────────────────────────────
+
+
+class DataSharingDecisionRequest(BaseModel):
+    """Grant or withdraw one offer."""
+
+    enabled: bool
+
+
+class DataSharingStatusResponse(BaseModel):
+    """Every published offer, with this member's decision on it.
+
+    `has_identity` is false for a participant who has no dataspace identity —
+    somebody enabled before the integration existed, or in a community that does
+    not take part. That is a normal state the UI explains, not an error.
+    """
+
+    has_identity: bool
+    offers: list[dict] = Field(default_factory=list)
+
+
+class DataSharingHistoryResponse(BaseModel):
+    """The member's own record of what happened with their data."""
+
+    has_identity: bool
+    events: list[dict] = Field(default_factory=list)
