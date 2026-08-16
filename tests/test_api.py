@@ -20,7 +20,9 @@ def test_me_endpoint_with_auth(client: TestClient, auth_headers: dict):
     assert "user" in data
     assert data["user"]["sub"] == "test-user-123"
     assert data["user"]["email"] == "test@example.com"
-    assert data["has_smart_meter"] is False
+    # `has_smart_meter` was asserted here until 2026-08-15. It was dropped from
+    # `MeResponse` in 05d9dd3 and the assertion outlived it unnoticed, because this test
+    # errored during fixture setup and never reached its body.
     assert data["terms_required"] is True
     assert data["onboarding_seen"] is False
     assert data["onboarding_seen_pages"] == []

@@ -180,13 +180,22 @@ async def overview(
                         }
                     )
                     device_ids.append(asset.sensor_id)
-        # Get device_id from participant's delivery points or assets
-        # This assumes the member has meter information in their profile
-        delivery_points = getattr(
-            participant.membership.member, "delivery_points", None
-        )
-        if delivery_points and len(delivery_points) > 0:
-            device_ids = delivery_points[0].meter_id  # or appropriate field
+        #
+        # A block reading `delivery_points[0].meter_id` into `device_ids` stood here until
+        # 2026-08-15. It was unreachable and always had been: `membership.member` is a
+        # `UserMemberSummarySchema`, whose fields are area, key, name, role and status. It
+        # carries no `delivery_points`, so the `getattr` default fired on every request.
+        # `UserMembershipSchema` exposes only `delivery_points_count`, an int.
+        #
+        # It was removed rather than corrected because it was actively misleading: it read
+        # as though a delivery point took precedence over an asset sensor, and it does not.
+        # Had it ever executed it would have assigned a string to `device_ids`, leaving
+        # `device_ids[0]` as that string's first character.
+        #
+        # The device is therefore always the first asset carrying a sensor id. If delivery
+        # points are wanted as an identifier, fetch them — the DT exposes them separately
+        # via `UserDeliveryPointsResponseSchema` — rather than reading them off the
+        # membership, where they are not.
     except Exception as ex:
         logger.warning(f"Failed to fetch devices for {user.sub}")
 

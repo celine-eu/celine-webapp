@@ -8,17 +8,20 @@ The participant frontend (SvelteKit) is maintained separately in [celine-fronten
 
 The webapp uses the BFF pattern:
 - The frontend (SvelteKit) communicates exclusively with the BFF at `/api/*`
-- The BFF reads the JWT from the `X-Auth-Request-Access-Token` header injected by oauth2_proxy
+- The BFF reads the JWT from the `X-Auth-Request-Access-Token` header injected by oauth2_proxy, and verifies it in full against Keycloak's JWKS
 - The BFF proxies authenticated requests to backend services (Digital Twin, nudging-tool, flexibility-api, rec-registry)
 - No cross-origin requests from the browser
 
 ## Quick Start
 
 ```bash
-uv sync
-uv run alembic upgrade head
-task run
-# Listens on http://localhost:8014
+task setup              # uv sync
+task migrate            # apply migrations (needs PostgreSQL)
+task run                # listens on http://localhost:8014
+```
+
+```bash
+task test               # the suite needs no database and no running services
 ```
 
 For the participant frontend, see [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`.
@@ -32,12 +35,13 @@ For the participant frontend, see [celine-frontend](https://github.com/celine-eu
 | Forecast | Energy production/consumption forecast from Digital Twin |
 | Suggestions | Flexibility window suggestions with accept/reject/remind actions |
 | Commitments | Active commitment tracking and cancellation |
-| Gamification | Points, badges, and commitment history from flexibility-api |
+| Gamification | Season points and badges from Digital Twin; commitment history from flexibility-api |
 | CO2 | Carbon emission factors and settings |
 | Community | Community metadata from rec-registry |
 | Notifications | User notification list, read/unread, enable/disable |
 | Web Push | VAPID-based push notification subscription via nudging-tool |
-| Settings | Account settings (language, units), terms acceptance |
+| Settings | Display preferences and notification preferences, terms acceptance |
+| Data sharing | A member's own dataspace consents, and their withdrawal (off by default) |
 | Feedback | User feedback submission |
 | Health | Service health check |
 

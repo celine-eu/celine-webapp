@@ -11,6 +11,11 @@ tasks:
     cmds:
       - uv sync
 
+  test:
+    desc: Run the test suite (needs no database and no running services)
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
   run:
     desc: Run FastAPI BFF with reload (development)
     cmds:

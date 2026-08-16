@@ -25,10 +25,11 @@ from celine.webapp.settings import settings
 def client() -> TestClient:
     """An app with only these routes.
 
-    Deliberately not the shared `client` fixture: that one starts the whole
-    application, whose lifespan opens a real database connection, and these
-    routes touch no database at all. Borrowing it would make them fail for
-    reasons that have nothing to do with data sharing.
+    Deliberately not the shared `client` fixture. The original reason — that it opened a
+    real database connection — stopped being true on 2026-08-15, when the suite became
+    hermetic. The remaining reason stands on its own: these routes touch no database and
+    no upstream except the dataspace, so mounting the whole application would pull in
+    wiring whose failure would be attributed here.
     """
     from fastapi import FastAPI
 

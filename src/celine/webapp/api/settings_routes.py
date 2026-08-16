@@ -1,9 +1,9 @@
 """User settings API routes."""
 
 import logging
-import re
 
 from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import ValidationError
 
 from celine.webapp.api.deps import UserDep, DbDep, NudgingDep
 from celine.webapp.api.schemas import SettingsModel
@@ -11,8 +11,22 @@ from celine.webapp.db.user_settings import load_user_settings, update_user_setti
 
 router = APIRouter(prefix="/api", tags=["settings"])
 logger = logging.getLogger(__name__)
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 SUPPORTED_NOTIFICATION_LANGS = {"it", "en", "es"}
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    """The first validation message, as a plain string.
+
+    The 422 for this route carries a string `detail` that the app displays directly, not
+    FastAPI's array of error objects — so the message is unwrapped here rather than
+    letting the default handler shape it. Pydantic prefixes messages raised from a
+    validator with "Value error, "; that prefix is noise to a member reading it.
+    """
+    errors = exc.errors()
+    if not errors:
+        return "Settings payload is invalid"
+    message = str(errors[0].get("msg", "")).removeprefix("Value error, ").strip()
+    return message or "Settings payload is invalid"
 
 
 def _normalize_lang(lang: str | None) -> str | None:
@@ -93,14 +107,18 @@ async def update_settings(
     """Update user settings."""
 
     data = await request.json()
-    model = SettingsModel.model_validate(data)
-    if model.notifications.email_enabled and not EMAIL_RE.match(
-        (model.notifications.email or "").strip()
-    ):
+    try:
+        model = SettingsModel.model_validate(data)
+    except ValidationError as exc:
+        # The body is read here rather than declared as a parameter, so FastAPI's
+        # dependency layer never validates it and never raises the
+        # RequestValidationError it knows how to turn into a 422. A raw ValidationError
+        # escaping this handler is an unhandled exception, which the caller receives as a
+        # 500 — a mistyped email address rendered as an outage.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Email address is required and must be valid",
-        )
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=_validation_detail(exc),
+        ) from exc
 
     await update_user_settings(
         user_id=user.sub,
