@@ -5,8 +5,11 @@ for some time, and a sharing screen that cannot answer is worse than no screen a
 all. When the flag is off every route here answers `404` and the UI hides the
 section, so nothing half-working is exposed.
 
-Everything is done **as the member**, with their own verifiable credential. This
-service only resolves which credential is theirs.
+**These are proxies.** Onboarding owns the member's dataspace identity, resolves
+their credential and holds the connector grants; this service forwards the
+member's own token and passes the answer back. The paths and response shapes are
+unchanged from when the work happened here, because the one consumer has a page
+built on them and a relocation should cost it nothing.
 """
 
 from __future__ import annotations
@@ -15,18 +18,44 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from celine.webapp.api.deps import UserDep
+from celine.webapp.api.deps import DbDep, OnboardingDep, UserDep
 from celine.webapp.api.schemas import (
     DataSharingDecisionRequest,
     DataSharingHistoryResponse,
     DataSharingStatusResponse,
 )
+from celine.webapp.db.user_settings import get_onboarding_page_seen_at
 from celine.webapp.services import data_sharing as service
 from celine.webapp.settings import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/data-sharing", tags=["data-sharing"])
+
+
+async def _status(
+    body: dict, user: UserDep, db: DbDep
+) -> DataSharingStatusResponse:
+    """Onboarding's answer, plus the two facts the banner needs.
+
+    Being *asked* is this service's to know: it is per-user state about this
+    app's own UI, and onboarding holds no session with the member to keep it in.
+    It is read from `user_onboarding_views` under `data-sharing`, the same table
+    and the same route (`POST /api/onboarding/seen`) every in-app tour uses.
+    """
+    offers = body.get("offers") or []
+    prompt = service.prompt_state(
+        seen_at=await get_onboarding_page_seen_at(user.sub, service.PAGE_KEY, db),
+        offers=offers,
+        after_days=settings.data_sharing_review_after_days,
+    )
+    return DataSharingStatusResponse(
+        has_identity=bool(body.get("has_identity")),
+        state=body.get("state"),
+        offers=offers,
+        asked=prompt.asked,
+        review_due=prompt.review_due,
+    )
 
 
 def _require_feature() -> None:
@@ -36,117 +65,69 @@ def _require_feature() -> None:
         raise HTTPException(status_code=404, detail="Data sharing is not enabled")
 
 
-def _member_email(user: UserDep) -> str:
-    email = getattr(user, "email", None)
-    if not email:
-        # The dataspace identity is keyed on the email the participant was
-        # onboarded with. Without it there is nothing to resolve.
-        raise HTTPException(
-            status_code=422, detail="No email address on the current session"
-        )
-    return email
-
-
-async def _credential(user: UserDep):
-    try:
-        return await service.resolve_subject(_member_email(user))
-    except service.NoDataspaceIdentity:
-        return None
-    except service.DataSharingUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
 @router.get("", response_model=DataSharingStatusResponse)
-async def get_data_sharing(user: UserDep) -> DataSharingStatusResponse:
-    """Every offer, and whether this member has agreed to it.
-
-    Offers come from the published vocabulary rather than a local copy, so what
-    is shown here and what the dataspace enforces cannot drift.
+async def get_data_sharing(
+    user: UserDep, onboarding: OnboardingDep, db: DbDep
+) -> DataSharingStatusResponse:
+    """Every offer this member's community publishes, and their decision on it.
 
     A member with no dataspace identity gets `has_identity: false` and an empty
-    list — a normal state for somebody enabled before the integration existed,
-    not an error.
+    list — a normal state, not an error. `state` says which normal state it is:
+    a community that does not take part and a member not yet provisioned need
+    different sentences, and used to get the same one.
+
+    `asked` and `review_due` are what the banner is drawn from: nobody has been
+    asked until they are, and a consent nobody ever revisits is the thing
+    GDPR Art. 7(3) is suspicious of.
+
+    The token is verified here before it is forwarded, as on every other route.
+    Onboarding verifies it again, and neither service relies on the other having
+    done so.
     """
     _require_feature()
 
-    credential = await _credential(user)
-    if credential is None:
-        return DataSharingStatusResponse(has_identity=False, offers=[])
-
-    try:
-        offers = await service.list_offers()
-        decisions = await service.list_decisions(credential)
-    except service.DataSharingUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    granted = {
-        d.get("offer_id"): d
-        for d in decisions
-        if d.get("offer_id") and d.get("status") in {"granted", "approved", "active"}
-    }
-
-    merged = []
-    for offer in offers:
-        offer_id = offer.get("id")
-        decision = granted.get(offer_id)
-        merged.append(
-            {
-                **offer,
-                "granted": decision is not None,
-                # Codes and hashes only — the record of what was shown when the
-                # decision was made, never anything about the person.
-                "evidence": (decision or {}).get("legal_basis"),
-                "decided_at": (decision or {}).get("decided_at"),
-            }
-        )
-
-    return DataSharingStatusResponse(has_identity=True, offers=merged)
+    return await _status(await service.get_status(onboarding), user, db)
 
 
 @router.post("/{offer_id}", response_model=DataSharingStatusResponse)
 async def set_data_sharing(
-    offer_id: str, body: DataSharingDecisionRequest, user: UserDep
+    offer_id: str,
+    body: DataSharingDecisionRequest,
+    user: UserDep,
+    onboarding: OnboardingDep,
+    db: DbDep,
 ) -> DataSharingStatusResponse:
     """Grant or withdraw one offer.
 
     Withdrawal is the reason this route exists: the onboarding wizard can only
     grant, so without it a consent could be given and never taken back.
+
+    Onboarding answers 409 when there is no decision to make — an offer this REC
+    does not publish, one disclosed under a contract rather than consented to, or
+    a member with no identity yet — and that refusal is forwarded with the reason
+    it gave.
     """
     _require_feature()
 
-    credential = await _credential(user)
-    if credential is None:
-        raise HTTPException(
-            status_code=409,
-            detail="This account has no dataspace identity yet",
-        )
-
-    try:
-        await service.set_decision(credential, offer_id, enabled=body.enabled)
-    except ValueError as exc:
-        # A contract-based offer: disclosed, not toggled.
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except service.DataSharingUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    return await get_data_sharing(user)
+    answer = await service.set_decision(onboarding, offer_id, enabled=body.enabled)
+    return await _status(answer, user, db)
 
 
 @router.get("/history", response_model=DataSharingHistoryResponse)
-async def get_data_sharing_history(user: UserDep) -> DataSharingHistoryResponse:
+async def get_data_sharing_history(
+    user: UserDep, onboarding: OnboardingDep
+) -> DataSharingHistoryResponse:
     """What has happened with this member's data, from their own record.
 
     Served by provenance under the member's credential, so it is their history
-    rather than one this service assembles. Absent provenance returns an empty
-    list: the decisions stand without it, and failing here would make the whole
-    page unusable for a detail.
+    rather than one this service assembles. Absent provenance is an empty list
+    rather than a failure — decided upstream, where the credential is.
     """
     _require_feature()
 
-    credential = await _credential(user)
-    if credential is None:
-        return DataSharingHistoryResponse(has_identity=False, events=[])
-
+    body = await service.get_history(onboarding)
     return DataSharingHistoryResponse(
-        has_identity=True, events=await service.list_history(credential)
+        has_identity=bool(body.get("has_identity")),
+        state=body.get("state"),
+        events=body.get("events") or [],
     )

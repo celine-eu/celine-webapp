@@ -66,10 +66,34 @@ async def list_onboarding_seen_pages(user_id: str, db: AsyncSession) -> list[str
     return list(result.scalars().all())
 
 
+async def get_onboarding_page_seen_at(
+    user_id: str, page_key: str, db: AsyncSession
+) -> datetime | None:
+    """When this user last saw one page, or `None` if they never have.
+
+    `list_onboarding_seen_pages` answers *whether*, which is all a tour needs.
+    The data-sharing banner needs *when*: it returns once the decision behind it
+    has gone stale.
+    """
+    result = await db.execute(
+        select(UserOnboardingView.seen_at).filter(
+            UserOnboardingView.user_id == user_id,
+            UserOnboardingView.page_key == page_key,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def mark_onboarding_page_seen(
     user_id: str, page_key: str, db: AsyncSession
 ) -> UserOnboardingView:
-    """Mark one onboarding page as completed for a user."""
+    """Mark one onboarding page as seen, now.
+
+    Seeing it again moves `seen_at` forward rather than leaving the first visit
+    standing. Without that a dismissal could never be repeated: the data-sharing
+    banner returns when the row goes stale, and a member who dismissed it a
+    second time would find it back on the next page load, permanently.
+    """
     result = await db.execute(
         select(UserOnboardingView).filter(
             UserOnboardingView.user_id == user_id,
@@ -80,8 +104,10 @@ async def mark_onboarding_page_seen(
     if view is None:
         view = UserOnboardingView(user_id=user_id, page_key=page_key)
         db.add(view)
-        await db.commit()
-        await db.refresh(view)
+    else:
+        view.seen_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(view)
     return view
 
 

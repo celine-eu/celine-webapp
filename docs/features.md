@@ -81,6 +81,11 @@ A member's own decisions about sharing their energy data, at `GET /api/data-shar
 answer 404 and the app hides the section, because a sharing screen that cannot record a
 decision is worse than no screen.
 
+**The work happens in onboarding.** It owns the member's dataspace identity, resolves
+their credential, merges the offers their community publishes against the decisions the
+connector holds, and serves their history. These routes forward the member's own token to
+it and pass the answer back, because the browser talks only to this service.
+
 The offers a member sees are read from the published vocabulary on each request rather
 than from a local copy — two copies of the text somebody agrees to is how the thing
 displayed and the thing recorded drift apart.
@@ -88,7 +93,14 @@ displayed and the thing recorded drift apart.
 **Withdrawal is the point of the surface.** The onboarding wizard can only grant, so
 without these routes a consent could be given and never taken back. Every call is made
 with the member's own credential: it is their act, and an administrator cannot perform it
-for them.
+for them. This service holds no credential and no service account of its own.
+
+**Being asked is this service's half.** `GET /api/data-sharing` carries `asked` and
+`review_due`, so the app can show a first-run sequence to somebody who has never been
+asked and a "review your settings" reminder to somebody whose decision has gone stale
+(`DATA_SHARING_REVIEW_AFTER_DAYS`, 180 by default). A dismissal is recorded through
+`POST /api/onboarding/seen` under the `data-sharing` key — the same table every in-app
+tour uses, and no new one.
 
 ## Settings
 

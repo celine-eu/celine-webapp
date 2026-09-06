@@ -34,15 +34,16 @@ than no screen.
 | Variable | Default | Description |
 |---|---|---|
 | `DATA_SHARING_ENABLED` | `false` | Master switch for the whole surface |
-| `IDENTITY_REGISTRY_URL` | `http://host.docker.internal:30005` | Resolves the member's DID and credential |
-| `DS_CONNECTOR_URL` | `http://host.docker.internal:30001` | Holds the consent records |
-| `DS_PROVENANCE_URL` | `http://host.docker.internal:30000` | Serves the member's own history |
-| `DS_NS_URL` | — | Vocabulary namespace |
-| `DS_RESOLVE_CLIENT_ID` | `svc-celine-webapp` | Service account, used *only* to resolve a credential |
-| `DS_RESOLVE_CLIENT_SECRET` | — | Secret for the above |
+| `DATA_SHARING_REVIEW_AFTER_DAYS` | `180` | How long a decision stands before the member is asked to review it. `0` or less asks once and never again |
 
-The routes stay off unless `DATA_SHARING_ENABLED` is true **and** both
-`IDENTITY_REGISTRY_URL` and `DS_CONNECTOR_URL` are set.
+The routes stay off unless `DATA_SHARING_ENABLED` is true **and** `ONBOARDING_API_URL`
+is set.
+
+The dataspace is not reached from here. Onboarding resolves the member's credential,
+speaks to the connector and serves their history; this service forwards the member's own
+token to `/api/me/data-sharing` and passes the answer back. There is no identity-registry
+URL, no connector URL and no service account in this repository — a credential that never
+leaves the service that resolved it cannot leak from the one that did not need it.
 
 ## Backend Setup
 

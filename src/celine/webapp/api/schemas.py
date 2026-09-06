@@ -410,19 +410,33 @@ class DataSharingDecisionRequest(BaseModel):
 
 
 class DataSharingStatusResponse(BaseModel):
-    """Every published offer, with this member's decision on it.
+    """Every offer this member's community publishes, with their decision on it.
 
     `has_identity` is false for a participant who has no dataspace identity —
     somebody enabled before the integration existed, or in a community that does
     not take part. That is a normal state the UI explains, not an error.
+
+    `state` says *which* normal state, in one word, and is passed through from
+    onboarding unchanged: those two cases need different sentences and used to
+    get the same one. It is additive — the field the page was built on is
+    `has_identity`, and that has not moved.
     """
 
     has_identity: bool
+    state: str | None = None
     offers: list[dict] = Field(default_factory=list)
+
+    #: Has this member ever been asked — here, or by deciding anything in
+    #: onboarding's funnel. False means the first-run sequence, not the banner.
+    asked: bool = False
+    #: Has what they last said gone stale. A standing consent nobody revisits is
+    #: what makes the reminder worth having.
+    review_due: bool = False
 
 
 class DataSharingHistoryResponse(BaseModel):
     """The member's own record of what happened with their data."""
 
     has_identity: bool
+    state: str | None = None
     events: list[dict] = Field(default_factory=list)

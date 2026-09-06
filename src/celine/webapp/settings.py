@@ -89,30 +89,25 @@ class Settings(BaseSettings):
     #
     # When false the API answers 404 and the UI hides the section, so nothing
     # half-working is exposed.
+    #
+    # The dataspace itself is reached by onboarding, never from here — no
+    # identity registry, no connector, no provenance, and no service account.
+    # `onboarding_api_url` above is the only address this feature needs.
     data_sharing_enabled: bool = False
 
-    # Where the member's decisions live. `identity_registry_url` resolves the
-    # subject's DID and credential from their email; the connector holds the
-    # consent rows; provenance serves their own history.
-    identity_registry_url: Optional[str] = "http://host.docker.internal:30005"
-    ds_connector_url: Optional[str] = "http://host.docker.internal:30001"
-    ds_ns_url: Optional[str] = None
-    ds_provenance_url: Optional[str] = "http://host.docker.internal:30000"
-
-    # Service account used only to resolve a member's credential at request
-    # time (identity-registry.resolve). Every consent call is then made with
-    # the member's own credential, never this one.
-    ds_resolve_client_id: str = "svc-celine-webapp"
-    ds_resolve_client_secret: str = ""
+    # How long a decision stands before the member is asked to look at it again.
+    # A standing consent nobody ever revisits is what GDPR Art. 7(3) is
+    # suspicious of; asking every session is nagging, and a member who dismisses
+    # a banner has answered it for now.
+    #
+    # Zero or less switches the staleness re-prompt off — asked once, and never
+    # again — which is a configuration rather than a second code path.
+    data_sharing_review_after_days: int = 180
 
     @property
     def data_sharing_ready(self) -> bool:
         """Whether the feature is on *and* configured well enough to answer."""
-        return bool(
-            self.data_sharing_enabled
-            and self.identity_registry_url
-            and self.ds_connector_url
-        )
+        return bool(self.data_sharing_enabled and self.onboarding_api_url)
 
     @property
     def resolved_database_url(self) -> str:

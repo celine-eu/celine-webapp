@@ -53,10 +53,11 @@ can only *grant* such a consent, since it holds no session once somebody is
 approved, so this is where withdrawal lives; GDPR Art. 7(3) requires it to be as
 easy as giving.
 
-Everything is done **as the member**, with their own verifiable credential. The
-service account configured here does one thing: resolve which credential is
-theirs. A service that could grant consent on somebody's behalf would defeat the
-point of recording it.
+Everything is done **as the member**, with their own verifiable credential —
+in `../onboarding`, which owns the dataspace identity and holds the grants.
+These routes forward the member's own token to it and pass the answer back, so
+the browser stays on one origin. There is no service account here: a service that
+could grant consent on somebody's behalf would defeat the point of recording it.
 
 **Off by default** (`DATA_SHARING_ENABLED`). The dataspace may not be deployed
 for some time, and a screen whose decisions take effect nowhere is worse than no

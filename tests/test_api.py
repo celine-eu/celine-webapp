@@ -43,6 +43,51 @@ def test_mark_onboarding_seen(client: TestClient, auth_headers: dict):
     assert "/notifications" in me_response.json()["onboarding_seen_pages"]
 
 
+def test_marking_a_page_seen_twice_moves_the_timestamp(
+    client: TestClient, auth_headers: dict, db_sessionmaker
+):
+    """Seeing a page again means seeing it *now*.
+
+    The data-sharing banner returns when its row goes stale, so a member who
+    dismisses it a second time must not be left with the first visit's date —
+    they would find it back on the next page load, permanently. The key is still
+    recorded once: `onboarding_seen_pages` is a set of keys, not a log.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from celine.webapp.db.models import UserOnboardingView
+
+    async def seen_at_rows() -> list:
+        async with db_sessionmaker() as session:
+            result = await session.execute(
+                select(UserOnboardingView.seen_at).filter(
+                    UserOnboardingView.user_id == "test-user-123",
+                    UserOnboardingView.page_key == "/notifications",
+                )
+            )
+            return list(result.scalars().all())
+
+    client.post(
+        "/api/onboarding/seen", headers=auth_headers, json={"page_key": "/notifications"}
+    )
+    first = asyncio.run(seen_at_rows())
+
+    client.post(
+        "/api/onboarding/seen", headers=auth_headers, json={"page_key": "/notifications"}
+    )
+    second = asyncio.run(seen_at_rows())
+
+    assert len(first) == 1 and len(second) == 1
+    # Strictly later, not merely not-earlier: the row keeping its original
+    # timestamp is exactly the behaviour this asserts against.
+    assert second[0] > first[0]
+
+    pages = client.get("/api/me", headers=auth_headers).json()["onboarding_seen_pages"]
+    assert pages.count("/notifications") == 1
+
+
 def test_accept_terms(client: TestClient, auth_headers: dict):
     """Test accepting terms."""
     response = client.post(

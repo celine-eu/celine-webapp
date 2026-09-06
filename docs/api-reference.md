@@ -202,26 +202,46 @@ Remove a push subscription.
 
 ## Data sharing
 
-Behind `DATA_SHARING_ENABLED`, **off by default**. While the flag is off — or while the
-identity registry or connector URL is unset — every route here answers `404` and the app
-hides the section, so nothing half-working is exposed.
+Behind `DATA_SHARING_ENABLED`, **off by default**. While the flag is off — or while
+`ONBOARDING_API_URL` is unset — every route here answers `404` and the app hides the
+section, so nothing half-working is exposed.
 
-Every call is made with the **member's own verifiable credential**. This service only
-resolves which credential is theirs; it cannot act on their behalf, and neither can an
-administrator.
+**These routes are proxies.** Onboarding owns the member's dataspace identity, resolves
+their credential and holds the connector grants; this service forwards the member's own
+token to `/api/me/data-sharing` and passes the answer back. It holds no credential and no
+service account, so it cannot act on a member's behalf — and neither can an administrator.
+
+The browser talks only to this service: onboarding is not same-origin.
 
 ### `GET /api/data-sharing`
 
-Every published offer, merged with this member's decision on it.
+Every offer this member's community publishes, merged with their decision on it.
 
 Offers are read from the published vocabulary on each request and never cached or
 vendored: two copies of the text somebody agrees to is how the thing displayed and the
-thing recorded drift apart. If the vocabulary is unreachable the call fails rather than
-serving a stale copy.
+thing recorded drift apart. The merge happens in onboarding, beside the credential that
+reads both.
 
-- `has_identity: false` with an empty list — a member with no dataspace identity. A normal
-  state, not an error.
-- `503` — the dataspace is unreachable.
+- `has_identity: false` with an empty list — a normal state, not an error.
+- `state` — why, in one word: `ok`, `no_dataspace` (the community does not take part),
+  `no_identity` (no credential yet), `identity_conflict` (an operator's to clear), or
+  `ambiguous_community`. Additive; `has_identity` has not moved.
+- `503` — onboarding, or the dataspace behind it, is unreachable.
+- `502` — onboarding answered something this service cannot pass on. A deployment fault,
+  deliberately distinct from the `404` that means the feature is off.
+
+**The prompt.** Two further fields say whether the app should ask:
+
+- `asked` — false only for a member who has neither dismissed the banner nor decided
+  anything, including in onboarding's own funnel. That is the first-run sequence.
+- `review_due` — true when the newest of their dismissal and their decisions is older
+  than `DATA_SHARING_REVIEW_AFTER_DAYS`. That is the "you are sharing data, review your
+  settings" reminder.
+
+Being asked is this service's state, not onboarding's: onboarding holds no session with
+the member. It is recorded by `POST /api/onboarding/seen` with `{"page_key":
+"data-sharing"}`, the same route every in-app tour uses, and marking it again moves the
+timestamp forward so the reminder can be dismissed more than once.
 
 ### `POST /api/data-sharing/{offer_id}`
 
@@ -232,14 +252,16 @@ without it a consent could be given and never taken back — a compliance defect
 a missing feature. Anything that reworks this surface must keep withdrawal reachable
 independently of the wizard.
 
-- `409` — the account has no dataspace identity, or the offer is contract-based and
-  therefore disclosed rather than toggled.
-- `503` — the dataspace is unreachable.
+- `409` — there is no decision here to make: no dataspace identity yet, an offer this REC
+  does not publish, or one disclosed under a contract rather than consented to. The
+  detail onboarding gave is forwarded and names which.
+- `503` — onboarding, or the dataspace behind it, is unreachable.
 
 ### `GET /api/data-sharing/history`
 
 What has happened with this member's data, served by provenance under their own
-credential. Absent provenance returns an empty history rather than an error.
+credential. Absent provenance returns an empty history rather than an error — decided in
+onboarding, where the credential is.
 
 ---
 
