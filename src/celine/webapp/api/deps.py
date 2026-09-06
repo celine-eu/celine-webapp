@@ -9,6 +9,7 @@ import jwt as pyjwt
 
 from celine.webapp.settings import settings
 from celine.webapp.db import get_db
+from celine.webapp.services.onboarding import OnboardingClient
 from celine.sdk.auth import JwtUser
 from celine.sdk.auth.static import StaticTokenProvider
 from celine.sdk.dt import DTClient
@@ -118,6 +119,23 @@ def get_registry_client(request: Request) -> RecRegistryUserClient:
     )
 
 
+def get_onboarding_client(request: Request) -> OnboardingClient:
+    """Create an OnboardingClient forwarding the caller's JWT.
+
+    The member's own token and nothing else. Onboarding authorises its
+    member-facing routes by who is asking, so a service account here would let
+    this service act on somebody else's consent — which is exactly what makes a
+    recorded decision worth recording.
+    """
+    if not settings.onboarding_api_url:
+        raise HTTPException(status_code=503, detail="Onboarding API not configured")
+    raw_token = get_raw_token(request)
+    return OnboardingClient(
+        base_url=settings.onboarding_api_url,
+        token=raw_token,
+    )
+
+
 def get_client_ip(request: Request) -> str:
     """Extract client IP from request headers."""
     forwarded = request.headers.get("X-Forwarded-For")
@@ -148,3 +166,4 @@ DTDep = Annotated[DTClient, Depends(get_dt_client)]
 FlexibilityDep = Annotated[FlexibilityClient, Depends(get_flexibility_client)]
 NudgingDep = Annotated[NudgingClient, Depends(get_nudging_client)]
 RegistryDep = Annotated[RecRegistryUserClient, Depends(get_registry_client)]
+OnboardingDep = Annotated[OnboardingClient, Depends(get_onboarding_client)]

@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     flexibility_api_url: Optional[str] = "http://host.docker.internal:8017"
     nudging_ingest_scope: str = "nudging.ingest"
 
+    # Onboarding owns the member's dataspace identity and their consent
+    # rows; this service only forwards the member's own token to it. Its own
+    # default is http://localhost:8040 — the host-gateway form is what this
+    # service reaches it by, like every other upstream here.
+    onboarding_api_url: Optional[str] = "http://host.docker.internal:8040"
+
     # ── Dataspace data sharing ────────────────────────────────────────────
     #
     # Off by default. The dataspace may not be deployed for some time, and a

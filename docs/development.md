@@ -17,6 +17,7 @@
 | `NUDGING_API_URL` | `http://host.docker.internal:8016` | nudging-tool service URL |
 | `FLEXIBILITY_API_URL` | `http://host.docker.internal:8017` | flexibility-api service URL |
 | `REC_REGISTRY_URL` | `http://host.docker.internal:8004` | rec-registry service URL |
+| `ONBOARDING_API_URL` | `http://host.docker.internal:8040` | onboarding service URL — reached with the member's own token |
 | `SMART_METER_API_URL` | — | Optional smart meter API URL |
 | `NUDGING_INGEST_SCOPE` | `nudging.ingest` | OAuth2 scope for nudging ingest calls |
 | `POLICY_VERSION` | `2024-01-01` | Current terms version string |
