@@ -426,6 +426,14 @@ class DataSharingStatusResponse(BaseModel):
     state: str | None = None
     offers: list[dict] = Field(default_factory=list)
 
+    #: The member's own dataspace identity — DID, credential role, and the dates
+    #: it runs between. Enough to quote to a REC manager looking them up, and the
+    #: only way a member learns a DID that was minted on their behalf. `None`
+    #: unless `state` is `ok`.
+    #:
+    #: **Projected, not forwarded.** See `_identity` in `api/data_sharing.py`.
+    identity: dict | None = None
+
     #: Has this member ever been asked — here, or by deciding anything in
     #: onboarding's funnel. False means the first-run sequence, not the banner.
     asked: bool = False

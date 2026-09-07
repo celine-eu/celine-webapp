@@ -302,6 +302,7 @@ class TestReadDecisions:
             "has_identity": False,
             "state": "no_identity",
             "offers": [],
+            "identity": None,
             "asked": False,
             "review_due": False,
         }
@@ -321,6 +322,89 @@ class TestReadDecisions:
         body = client.get("/api/data-sharing", headers=auth_headers).json()
 
         assert body["state"] == "no_dataspace"
+
+    def test_the_identity_is_surfaced(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        """A DID minted on somebody's behalf is otherwise unknowable to them.
+
+        It is what a member quotes to a REC manager looking them up, and the
+        dates are here because "my sharing stopped working" and "my credential
+        expired last week" are one event that only one party can see.
+        """
+        onboarding.answer(
+            "/api/me/data-sharing",
+            httpx.Response(
+                200,
+                json={
+                    **STATUS_OK,
+                    "identity": {
+                        "did": "did:web:users.example:email-abc",
+                        "role": "DataSubject",
+                        "issued_at": "2026-01-01T00:00:00Z",
+                        "expires_at": "2027-01-01T00:00:00Z",
+                    },
+                },
+            ),
+        )
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert body["identity"] == {
+            "did": "did:web:users.example:email-abc",
+            "role": "DataSubject",
+            "issued_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2027-01-01T00:00:00Z",
+        }
+
+    def test_a_member_without_one_gets_null(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        onboarding.answer(
+            "/api/me/data-sharing",
+            httpx.Response(
+                200, json={"has_identity": False, "state": "no_dataspace", "offers": []}
+            ),
+        )
+
+        assert client.get("/api/data-sharing", headers=auth_headers).json()["identity"] is None
+
+    def test_the_identity_block_is_projected_not_forwarded(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        """The lock this repository can check on its own.
+
+        Onboarding reads the DID, role and dates off the member's credential and
+        builds the block field by field, asserting the `vc_jws` beside them never
+        joins it. This asserts the same thing one hop later, without trusting
+        that: a credential arriving here does not reach a browser, whatever
+        upstream does. It is the one part of the answer that sits next to the
+        member's authentication.
+
+        A field onboarding adds later is dropped until it is named in
+        `_IDENTITY_FIELDS`, which is the cost and which fails the safe way.
+        """
+        onboarding.answer(
+            "/api/me/data-sharing",
+            httpx.Response(
+                200,
+                json={
+                    **STATUS_OK,
+                    "identity": {
+                        "did": "did:web:x",
+                        "role": "DataSubject",
+                        "issued_at": None,
+                        "expires_at": None,
+                        "vc_jws": "eyJhbGciOiJFZERTQSJ9.the-members-authentication",
+                    },
+                },
+            ),
+        )
+
+        response = client.get("/api/data-sharing", headers=auth_headers)
+
+        assert "vc_jws" not in response.json()["identity"]
+        assert "the-members-authentication" not in response.text
 
     def test_an_unreachable_dataspace_is_a_503(
         self, client: TestClient, auth_headers: dict, enabled, onboarding
@@ -471,6 +555,7 @@ def test_the_response_shape_cannot_carry_a_credential():
         "has_identity",
         "state",
         "offers",
+        "identity",
         "asked",
         "review_due",
     }

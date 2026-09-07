@@ -45,6 +45,32 @@ def _state(answer) -> str | None:
     return getattr(state, "value", state)
 
 
+#: The identity fields a browser may see. Onboarding builds its block from
+#: exactly these, and its own suite asserts the credential never joins them.
+_IDENTITY_FIELDS = ("did", "role", "issued_at", "expires_at")
+
+
+def _identity(answer) -> dict | None:
+    """Onboarding's identity block, narrowed to the fields named here.
+
+    **Projected rather than forwarded, unlike `offers`.** This is the one part of
+    onboarding's answer that sits beside the member's `vc_jws` upstream — it is
+    read off the same credential — and this service must not learn to pass a
+    credential on. Onboarding builds the block field by field and asserts the
+    same thing at the source; naming the fields again here is the lock a reviewer
+    of *this* repository can check without reading another service.
+
+    The cost is real and points the safe way: a field onboarding adds later is
+    dropped until it is named here, which is visible and one line to fix. The
+    alternative fails the other way — anything that ever lands in that dict
+    reaches a browser.
+    """
+    identity = getattr(answer, "identity", None)
+    if not identity:
+        return None
+    return {field: identity.get(field) for field in _IDENTITY_FIELDS}
+
+
 async def _status(answer, user: UserDep, db: DbDep) -> DataSharingStatusResponse:
     """Onboarding's answer, plus the two facts the banner needs.
 
@@ -63,6 +89,7 @@ async def _status(answer, user: UserDep, db: DbDep) -> DataSharingStatusResponse
         has_identity=answer.has_identity,
         state=_state(answer),
         offers=offers,
+        identity=_identity(answer),
         asked=prompt.asked,
         review_due=prompt.review_due,
     )
@@ -85,6 +112,10 @@ async def get_data_sharing(
     list — a normal state, not an error. `state` says which normal state it is:
     a community that does not take part and a member not yet provisioned need
     different sentences, and used to get the same one.
+
+    `identity` carries their DID, the credential's role and its dates when they
+    have one — what the wizard shows a member who needs to quote it to a REC
+    manager. Never the credential itself.
 
     `asked` and `review_due` are what the banner is drawn from: nobody has been
     asked until they are, and a consent nobody ever revisits is the thing
