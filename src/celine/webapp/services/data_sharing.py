@@ -11,7 +11,9 @@ What is left is a proxy, and the proxy is the point: **the frontend talks only
 to this service.** Onboarding is not same-origin, and keeping the browser on one
 origin is why this repository exists.
 
-Two things about the mapping are deliberate.
+The HTTP is `celine.sdk.onboarding.OnboardingClient`, the same generated-client-
+plus-wrapper every other upstream arrives through. What is left here is the one
+thing a BFF owns: **which of onboarding's answers a browser is allowed to see.**
 
 * **The member's own token, and no service token.** Onboarding authorises these
   routes by who is asking. Adding a service account here would let this service
@@ -27,19 +29,21 @@ Two things about the mapping are deliberate.
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from fastapi import HTTPException
 
-from celine.webapp.services.onboarding import OnboardingClient, OnboardingUnavailable
+from celine.sdk.onboarding import OnboardingApiError, OnboardingClient
+from celine.sdk.openapi.onboarding.schemas import (
+    DataSharingHistoryResponseSchema,
+    DataSharingStatusResponseSchema,
+)
 
 logger = logging.getLogger(__name__)
-
-#: Onboarding's member surface. The REC is not a path segment: a member does not
-#: choose which community they are in, their token says.
-BASE_PATH = "/api/me/data-sharing"
 
 #: The `user_onboarding_views` key under which a dismissal of the sharing banner
 #: is recorded. The table already stores "this member has seen page X" with a
@@ -53,70 +57,46 @@ PAGE_KEY = "data-sharing"
 _FORWARDED = frozenset({401, 403, 409, 422, 503})
 
 
-def _detail(response: Any) -> str:
-    """Onboarding's own explanation, which names the offer or the state."""
+@asynccontextmanager
+async def _forwarding(what: str):
+    """Turn onboarding's refusals into the ones this service is allowed to serve."""
     try:
-        body = response.json()
-    except ValueError:
-        return response.text[:200]
-    if isinstance(body, dict) and "detail" in body:
-        return str(body["detail"])
-    return str(body)[:200]
-
-
-async def _call(
-    client: OnboardingClient, method: str, path: str, **kwargs: Any
-) -> dict[str, Any]:
-    try:
-        response = await client.request(method, path, **kwargs)
-    except OnboardingUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    if response.status_code >= 400:
-        if response.status_code in _FORWARDED:
+        yield
+    except OnboardingApiError as exc:
+        status = exc.status_code or 502
+        if status in _FORWARDED:
             raise HTTPException(
-                status_code=response.status_code, detail=_detail(response)
-            )
-        logger.warning(
-            "Onboarding answered %s for %s %s", response.status_code, method, path
-        )
+                status_code=status, detail=exc.detail or str(exc)
+            ) from exc
+        logger.warning("Onboarding answered %s for %s", status, what)
         raise HTTPException(
-            status_code=502,
-            detail=f"Onboarding answered {response.status_code}",
-        )
-
-    try:
-        body = response.json()
-    except ValueError as exc:
-        logger.warning("Onboarding answered unparseable body for %s %s", method, path)
+            status_code=502, detail=f"Onboarding answered {status}"
+        ) from exc
+    except httpx.HTTPError as exc:
+        # Never reached onboarding at all. Worth retrying, like a 503 from it.
         raise HTTPException(
-            status_code=502, detail="Onboarding answered something unreadable"
+            status_code=503, detail=f"Onboarding unreachable: {exc}"
         ) from exc
 
-    if not isinstance(body, dict):
-        raise HTTPException(
-            status_code=502, detail="Onboarding answered an unexpected shape"
-        )
-    return body
 
-
-async def get_status(client: OnboardingClient) -> dict[str, Any]:
+async def get_status(client: OnboardingClient) -> DataSharingStatusResponseSchema:
     """Every offer this member's community publishes, with their decision."""
-    return await _call(client, "GET", BASE_PATH)
+    async with _forwarding("get_status"):
+        return await client.get_data_sharing()
 
 
 async def set_decision(
     client: OnboardingClient, offer_id: str, *, enabled: bool
-) -> dict[str, Any]:
+) -> DataSharingStatusResponseSchema:
     """Grant or withdraw one offer, as the member."""
-    return await _call(
-        client, "POST", f"{BASE_PATH}/{offer_id}", json={"enabled": enabled}
-    )
+    async with _forwarding("set_decision"):
+        return await client.set_data_sharing(offer_id, enabled=enabled)
 
 
-async def get_history(client: OnboardingClient) -> dict[str, Any]:
+async def get_history(client: OnboardingClient) -> DataSharingHistoryResponseSchema:
     """The member's own record of what happened with their data."""
-    return await _call(client, "GET", f"{BASE_PATH}/history")
+    async with _forwarding("get_history"):
+        return await client.get_data_sharing_history()
 
 
 # ── the prompt ────────────────────────────────────────────────────────────────

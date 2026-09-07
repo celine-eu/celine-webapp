@@ -44,6 +44,7 @@ import time  # noqa: E402
 import uuid  # noqa: E402
 from typing import Any, Iterator  # noqa: E402
 
+import httpx  # noqa: E402
 import jwt  # noqa: E402
 import pytest  # noqa: E402
 from cryptography.hazmat.primitives import serialization  # noqa: E402
@@ -162,6 +163,43 @@ def make_token(signing_key: rsa.RSAPrivateKey):
 def auth_headers(make_token) -> dict[str, str]:
     """Headers carrying a valid token, in the header oauth2-proxy actually injects."""
     return {app_settings.jwt_header_name: make_token()}
+
+
+# ─── Upstream HTTP ───────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_upstream_http(monkeypatch: pytest.MonkeyPatch):
+    """Route every `httpx.AsyncClient` through a handler, recording requests.
+
+    The seam for an SDK client. Unlike the four fakes above there is nothing to
+    inject: `celine.sdk.onboarding` builds its own `httpx.AsyncClient` inside the
+    call, so the class itself is what gets replaced — which leaves the wrapper,
+    the generated client and the schema conversion all running for real, against
+    responses a test wrote. Mirrors `mock_http` in `celine-sdk`'s own suite.
+
+    `TestClient` is unaffected: it drives the app through the *synchronous*
+    `httpx.Client`.
+    """
+
+    def _install(handler) -> list[httpx.Request]:
+        seen: list[httpx.Request] = []
+
+        def _recording(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return handler(request)
+
+        real = httpx.AsyncClient
+
+        class _MockedAsyncClient(real):  # type: ignore[misc, valid-type]
+            def __init__(self, *args, **kwargs) -> None:
+                kwargs["transport"] = httpx.MockTransport(_recording)
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "AsyncClient", _MockedAsyncClient)
+        return seen
+
+    return _install
 
 
 # ─── Database ────────────────────────────────────────────────────────────────

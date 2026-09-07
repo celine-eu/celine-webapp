@@ -15,6 +15,10 @@ The stub below is onboarding's HTTP surface, not this service's own functions:
 what is worth pinning is the request that leaves here — the path, the body, and
 the member's own token on it — because that is the half a future change could
 break without any test noticing.
+
+Only the socket is replaced. `celine.sdk.onboarding`'s wrapper, the generated
+client and the schema conversion all run, so a response shape onboarding could
+not actually produce fails here rather than passing quietly.
 """
 
 from __future__ import annotations
@@ -28,10 +32,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from celine.sdk.onboarding import OnboardingClient
 from celine.webapp.db.models import Base, UserOnboardingView
 from celine.webapp.services import data_sharing as service
-from celine.webapp.services import onboarding as onboarding_module
-from celine.webapp.services.onboarding import OnboardingClient
 from celine.webapp.settings import settings
 
 USER_ID = "test-user-123"
@@ -97,14 +100,9 @@ class FakeOnboarding:
 
 
 @pytest.fixture
-def onboarding(monkeypatch) -> FakeOnboarding:
+def onboarding(mock_upstream_http) -> FakeOnboarding:
     fake = FakeOnboarding()
-    real = httpx.AsyncClient
-
-    def factory(**kwargs):
-        return real(transport=httpx.MockTransport(fake.handle), **kwargs)
-
-    monkeypatch.setattr(onboarding_module.httpx, "AsyncClient", factory)
+    mock_upstream_http(fake.handle)
     return fake
 
 
@@ -144,7 +142,7 @@ def client(onboarding: FakeOnboarding, db_sessionmaker) -> TestClient:
         sub=USER_ID, email="test@example.com", name="Test User"
     )
     app.dependency_overrides[get_onboarding_client] = lambda: OnboardingClient(
-        "http://onboarding:8040", TOKEN
+        "http://onboarding:8040", default_token=TOKEN
     )
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client

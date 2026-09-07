@@ -55,6 +55,7 @@ token is rejected with 401 wherever the service runs.
 | **nudging-tool** | Notification list, preferences, web push, flexibility reminders |
 | **flexibility-api** | Commitment history and flexibility window responses |
 | **rec-registry** | Community metadata (name, legal and contact details, links) |
+| **onboarding** | The member's own data-sharing decisions — offers, grant and withdraw, history |
 | **Keycloak** | Identity provider, and the JWKS this service verifies tokens against |
 
 All service clients are provided via `celine-sdk`, never by reaching into a sibling

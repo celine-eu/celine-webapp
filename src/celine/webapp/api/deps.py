@@ -9,12 +9,12 @@ import jwt as pyjwt
 
 from celine.webapp.settings import settings
 from celine.webapp.db import get_db
-from celine.webapp.services.onboarding import OnboardingClient
 from celine.sdk.auth import JwtUser
 from celine.sdk.auth.static import StaticTokenProvider
 from celine.sdk.dt import DTClient
 from celine.sdk.flexibility import FlexibilityClient
 from celine.sdk.nudging.client import NudgingClient
+from celine.sdk.onboarding import OnboardingClient
 from celine.sdk.rec_registry import RecRegistryUserClient
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ def get_onboarding_client(request: Request) -> OnboardingClient:
     raw_token = get_raw_token(request)
     return OnboardingClient(
         base_url=settings.onboarding_api_url,
-        token=raw_token,
+        default_token=raw_token,
     )
 
 

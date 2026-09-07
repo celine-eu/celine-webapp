@@ -7,9 +7,10 @@ section, so nothing half-working is exposed.
 
 **These are proxies.** Onboarding owns the member's dataspace identity, resolves
 their credential and holds the connector grants; this service forwards the
-member's own token and passes the answer back. The paths and response shapes are
-unchanged from when the work happened here, because the one consumer has a page
-built on them and a relocation should cost it nothing.
+member's own token — through `celine.sdk.onboarding`, like every other upstream —
+and passes the answer back. The paths and response shapes are unchanged from when
+the work happened here, because the one consumer has a page built on them and a
+relocation should cost it nothing.
 """
 
 from __future__ import annotations
@@ -33,9 +34,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/data-sharing", tags=["data-sharing"])
 
 
-async def _status(
-    body: dict, user: UserDep, db: DbDep
-) -> DataSharingStatusResponse:
+def _state(answer) -> str | None:
+    """Onboarding's `state` as the word itself.
+
+    The SDK hands back the generated enum; the page reads a string, and putting
+    the enum in the response would leak the generated class's name into JSON on
+    a future serializer change.
+    """
+    state = getattr(answer, "state", None)
+    return getattr(state, "value", state)
+
+
+async def _status(answer, user: UserDep, db: DbDep) -> DataSharingStatusResponse:
     """Onboarding's answer, plus the two facts the banner needs.
 
     Being *asked* is this service's to know: it is per-user state about this
@@ -43,15 +53,15 @@ async def _status(
     It is read from `user_onboarding_views` under `data-sharing`, the same table
     and the same route (`POST /api/onboarding/seen`) every in-app tour uses.
     """
-    offers = body.get("offers") or []
+    offers = answer.offers or []
     prompt = service.prompt_state(
         seen_at=await get_onboarding_page_seen_at(user.sub, service.PAGE_KEY, db),
         offers=offers,
         after_days=settings.data_sharing_review_after_days,
     )
     return DataSharingStatusResponse(
-        has_identity=bool(body.get("has_identity")),
-        state=body.get("state"),
+        has_identity=answer.has_identity,
+        state=_state(answer),
         offers=offers,
         asked=prompt.asked,
         review_due=prompt.review_due,
@@ -125,9 +135,9 @@ async def get_data_sharing_history(
     """
     _require_feature()
 
-    body = await service.get_history(onboarding)
+    answer = await service.get_history(onboarding)
     return DataSharingHistoryResponse(
-        has_identity=bool(body.get("has_identity")),
-        state=body.get("state"),
-        events=body.get("events") or [],
+        has_identity=answer.has_identity,
+        state=_state(answer),
+        events=answer.events or [],
     )

@@ -133,6 +133,10 @@ Twin, rec-registry, flexibility-api and nudging-tool through `celine-sdk`, then 
 the results. Those four are replaced by fakes in `tests/fakes.py`, which reproduce the
 shape the SDK returned when they were written.
 
+Onboarding, the fifth, is stubbed differently: `celine.sdk.onboarding` builds its own
+`httpx.AsyncClient`, so the `mock_upstream_http` fixture replaces the socket and lets the
+wrapper, the generated client and the schema conversion all run for real.
+
 So a green suite says the composition logic is correct against that shape.
 `tests/test_sdk_contract.py` checks the fakes against the installed `celine-sdk` models,
 which catches drift in the package — but **not** that a deployed upstream serves what its
@@ -149,7 +153,8 @@ dependency maintenance.
 | `tests/test_gamification_fanout.py` | `/api/gamification` — season scoring and its fallback |
 | `tests/test_nudging_fanout.py` | `/api/settings` and `/api/notifications` |
 | `tests/test_sdk_contract.py` | that the fakes still match the installed `celine-sdk` models |
-| `tests/test_data_sharing.py` | the data-sharing surface, dataspace stubbed |
+| `tests/test_data_sharing.py` | the data-sharing surface, onboarding stubbed at the socket |
+| `tests/test_onboarding_dep.py` | that the onboarding client is built per request from the caller's token |
 | `tests/test_api.py`, `tests/test_forecast.py` | pure mapping and window functions |
 | `tests/fakes.py` | the four upstream fakes |
 
