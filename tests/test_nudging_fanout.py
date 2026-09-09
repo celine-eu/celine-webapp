@@ -336,3 +336,49 @@ def test_no_notifications_is_an_empty_list_not_an_error(
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+# ─── When the nudging tool will not take the token ───────────────────────────
+
+
+def test_notifications_degrade_to_empty_when_nudging_rejects_the_token(
+    client: TestClient, auth_headers: dict, fake_nudging, caplog
+) -> None:
+    """
+    Staging, 2026-09: the first page render after login reached this route with an
+    *ID token* (oauth2-proxy prefers a bearer `Authorization` header over the cookie,
+    and SvelteKit's server-side fetch forwards that header). The nudging tool checks
+    its own audience and answered 401; the SDK raised `UnexpectedStatus`; this route
+    returned 500 and the frontend's unread badge stayed empty.
+
+    A token the nudging tool does not accept is not this member's fault and not a
+    server error: the list is empty, and the rejection is logged with the status so it
+    can be chased upstream.
+    """
+    import logging
+
+    from celine.sdk.openapi.nudging.errors import UnexpectedStatus
+
+    fake_nudging.list_error = UnexpectedStatus(401, b'{"detail":"Invalid or expired token"}')
+
+    with caplog.at_level(logging.WARNING):
+        res = client.get("/api/notifications", headers=auth_headers)
+
+    assert res.status_code == 200
+    assert res.json() == []
+    rejected = [r for r in caplog.records if "nudging" in r.getMessage().lower()]
+    assert rejected and rejected[0].levelno == logging.WARNING
+    assert "401" in rejected[0].getMessage()
+
+
+def test_notifications_fail_as_bad_gateway_on_other_upstream_errors(
+    client: TestClient, auth_headers: dict, fake_nudging
+) -> None:
+    """A nudging outage is still an error — but *its* error, reported as such."""
+    from celine.sdk.openapi.nudging.errors import UnexpectedStatus
+
+    fake_nudging.list_error = UnexpectedStatus(503, b"upstream down")
+
+    res = client.get("/api/notifications", headers=auth_headers)
+
+    assert res.status_code == 502

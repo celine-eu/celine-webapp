@@ -276,6 +276,9 @@ class FakeNudgingClient:
         self.email = ""
         self.enabled_notification_kinds = ["meter_anomaly", "price_up"]
         self.notifications: list[dict[str, Any]] = []
+        # Raised by `list_notifications` when set: the upstream answering with a status
+        # the SDK does not document (a 401 for an audience it does not accept, a 503).
+        self.list_error: Exception | None = None
         self.updates: list[dict[str, Any]] = []
         self.last_lang: str | None = None
         self.catalog: list[dict[str, Any]] = [
@@ -367,6 +370,8 @@ class FakeNudgingClient:
         unread_only: bool = False,
         token: str | None = None,
     ) -> list[dict[str, Any]]:
+        if self.list_error is not None:
+            raise self.list_error
         return list(self.notifications)
 
 

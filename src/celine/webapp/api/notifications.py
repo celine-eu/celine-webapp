@@ -1,8 +1,12 @@
 """Notification-related API routes."""
 
 import asyncio
+import logging
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
+
+from celine.sdk.openapi.nudging.errors import UnexpectedStatus
 
 from celine.webapp.api.deps import NudgingDep, UserDep, DbDep
 from celine.webapp.api.schemas import (
@@ -24,14 +28,35 @@ from celine.sdk.openapi.nudging.models import (
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
+logger = logging.getLogger(__name__)
+
 
 @router.get("", response_model=list[NotificationItem])
 async def list_notifications(
     user: UserDep, db: DbDep, nudging_client: NudgingDep
 ) -> list[NotificationItem]:
-    """List user notifications."""
+    """List user notifications.
 
-    res = await nudging_client.list_notifications()
+    A token the nudging tool will not accept (401/403) yields an empty list, not a 500:
+    the member is authenticated here, and the mismatch is between two services' audience
+    configuration — it is logged so it can be chased, and the page still renders. Any
+    other unexpected upstream status is the nudging tool's failure, reported as 502.
+    """
+
+    try:
+        res = await nudging_client.list_notifications()
+    except UnexpectedStatus as exc:
+        if exc.status_code in (401, 403):
+            logger.warning(
+                "Nudging rejected the forwarded token for %s with %s; returning no notifications",
+                user.sub,
+                exc.status_code,
+            )
+            return []
+        logger.error(
+            "Nudging list_notifications failed for %s with %s", user.sub, exc.status_code
+        )
+        raise HTTPException(status_code=502, detail="Notifications unavailable") from exc
 
     return [
         NotificationItem(
