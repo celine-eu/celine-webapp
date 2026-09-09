@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.15.1 (2026-09-09)
+
+### Bug Fixes
+
+- Build-and-inspect v3.0.1; lock celine-sdk 1.17.1 from PyPI
+  ([`80cc4c6`](https://github.com/celine-eu/celine-webapp/commit/80cc4c61e38273693e039fab466038e174173318))
+
+
 ## v1.15.0 (2026-09-09)
 
 ### Bug Fixes
