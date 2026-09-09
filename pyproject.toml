@@ -16,18 +16,10 @@ dependencies = [
   "python-jose[cryptography]>=3.3.0",
   "asyncpg>=0.31.0",
   "sqlalchemy-utils>=0.42.1",
-  "celine-sdk>=1.17.0",
+  "celine-sdk>=1.17.1",
   "typer>=0.16.1",
 ]
 
-
-[tool.uv]
-
-# Temporary: `celine-sdk` 1.17.0 adds the onboarding client this service now uses
-# and has not been released yet, so the pin above resolves against nothing on the
-# index. Remove this source — and re-lock — as soon as 1.17.0 is published.
-[tool.uv.sources]
-celine-sdk = { path = "../celine-sdk", editable = true }
 
 [dependency-groups]
 dev = [
