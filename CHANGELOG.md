@@ -2,6 +2,36 @@
 
 <!-- version list -->
 
+## v1.15.0 (2026-09-09)
+
+### Bug Fixes
+
+- Add identity field
+  ([`07ba047`](https://github.com/celine-eu/celine-webapp/commit/07ba04740edb3ac42496280663e23a5fa7911c1e))
+
+- Notifications degrade to empty on nudging 401
+  ([`df043ff`](https://github.com/celine-eu/celine-webapp/commit/df043ff15dad90df7602cb0ef37fa03d9d2f7c5e))
+
+### Chores
+
+- Update harness
+  ([`b0af424`](https://github.com/celine-eu/celine-webapp/commit/b0af4244c16b293b21d88c0b71fb41bd670f2fa5))
+
+### Features
+
+- Add data sharing withdrawal
+  ([`71c9115`](https://github.com/celine-eu/celine-webapp/commit/71c911573778431fe6cc0cb926d4ce49ec600593))
+
+- Add onboarding link via sdk
+  ([`2d5cc22`](https://github.com/celine-eu/celine-webapp/commit/2d5cc229e96546ce16a6f00800b81511f6794077))
+
+- Migrate ds integration to onboarding API
+  ([`831c3c2`](https://github.com/celine-eu/celine-webapp/commit/831c3c2ec7ae74c005d806cbb11518f82f5c94a2))
+
+- Use data-sahring endpoint from onboarding
+  ([`7e3a5dd`](https://github.com/celine-eu/celine-webapp/commit/7e3a5dda52b481870ba61d0b439a3660d675a4bb))
+
+
 ## v1.14.0 (2026-07-22)
 
 ### Features

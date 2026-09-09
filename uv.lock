@@ -138,7 +138,7 @@ wheels = [
 
 [[package]]
 name = "celine-sdk"
-version = "1.17.0"
+version = "1.17.1"
 source = { editable = "../celine-sdk" }
 dependencies = [
     { name = "aiomqtt" },
@@ -1087,7 +1087,7 @@ wheels = [
 
 [[package]]
 name = "rec-webapp-bff"
-version = "1.14.0"
+version = "1.15.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
