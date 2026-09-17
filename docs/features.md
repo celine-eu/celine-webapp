@@ -70,7 +70,12 @@ Actual push delivery is handled by the nudging-tool service, not the BFF.
 
 ## Feedback
 
-Users can submit feedback via `POST /api/feedback`. Feedback data can be exported using the `celine-webapp-export-feedback` CLI tool.
+Users can submit feedback via `POST /api/feedback`. Each entry is bound to the REC resolved
+from the authenticated participant's registry membership and may include a screenshot.
+Authorized REC managers can review the same entries, retrieve their screenshots, and advance
+them through `new`, `seen`, and `resolved`; the manager response omits stored identity and
+network diagnostics. Feedback data can also be exported using the
+`celine-webapp-export-feedback` CLI tool.
 
 ## Data Sharing
 

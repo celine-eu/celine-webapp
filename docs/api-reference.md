@@ -269,7 +269,25 @@ onboarding, where the credential is.
 
 ### `POST /api/feedback`
 
-Submit user feedback. Returns `201` on success.
+Submit participant-dashboard feedback. The service resolves the participant's REC from
+the registry using their token; a `community_key` supplied in diagnostic context is not
+trusted. Returns `201` on success.
+
+### `GET /api/feedback/manager/{community_key}`
+
+List participant feedback for one REC, optionally filtered by `status` (`new`, `seen`, or
+`resolved`) and paginated with `page` and `pageSize`. Requires `community.read` and either
+the REC's `admins`/`managers` organization group or the realm `admins` group. User identity,
+IP address, user agent, and raw screenshot bytes are not included in the response.
+
+### `GET /api/feedback/manager/{community_key}/{feedback_id}/screenshot`
+
+Return the stored PNG, JPEG, or WebP screenshot after the same REC authorization check.
+
+### `PATCH /api/feedback/manager/{community_key}/{feedback_id}`
+
+Advance a feedback item to `seen` or `resolved`. Review state is monotonic and cannot move
+backward.
 
 ---
 
