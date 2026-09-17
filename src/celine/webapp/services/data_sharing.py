@@ -145,12 +145,47 @@ def _decided_at(offers: list[dict[str, Any]]) -> datetime | None:
     return max(stamps) if stamps else None
 
 
+def offer_set(offers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The decidable offers on screen, as ids and versions — what gets recorded."""
+    return [
+        {"id": str(offer.get("id")), "version": offer.get("consent_text_version")}
+        for offer in offers
+        if offer.get("can_decide") and offer.get("id")
+    ]
+
+
+def _unasked(
+    offers: list[dict[str, Any]], seen_offers: dict[str, Any] | None
+) -> list[str]:
+    """Decidable offers the member holds no grant on and was never shown as they are now.
+
+    Shown means either record: the onboarding form (``presented_version``) or this
+    app (``seen_offers``, from the last decision or dismissal). An offer shown at
+    its current version and not granted was declined, and is not asked again.
+    """
+    seen_offers = seen_offers or {}
+    unasked: list[str] = []
+    for offer in offers:
+        if not offer.get("can_decide") or offer.get("granted"):
+            continue
+        offer_id = str(offer.get("id"))
+        current = offer.get("consent_text_version")
+        in_form = offer.get("presented_version") is not None and offer.get(
+            "presented_version"
+        ) == current
+        in_app = offer_id in seen_offers and seen_offers[offer_id] == current
+        if not (in_form or in_app):
+            unasked.append(offer_id)
+    return unasked
+
+
 def prompt_state(
     *,
     seen_at: datetime | None,
     offers: list[dict[str, Any]],
     after_days: int,
     now: datetime | None = None,
+    seen_offers: dict[str, Any] | None = None,
 ) -> Prompt:
     """Whether to show the banner, from the dismissal and the decisions.
 
@@ -160,16 +195,40 @@ def prompt_state(
 
     ``after_days`` of zero or less turns the staleness half off, which is how
     "ask once and never again" is configured.
+
+    An offer onboarding marks ``outdated`` — consented to under an older version —
+    makes the review due regardless. So does an offer that is new, or whose
+    version moved, since the member was last shown the set (``seen_offers`` here,
+    ``presented_version`` from the onboarding form). A row recorded before the set
+    was (``seen_offers`` of ``None``) covers nothing, so that member is asked once
+    more — the safe way to be wrong.
     """
     now = now or datetime.now(timezone.utc)
     decided_at = _decided_at(offers)
-    asked = seen_at is not None or decided_at is not None
+    # An offer whose text changed after the member consented to it. ds keeps the
+    # old consent granting and never asks again, so this is the only place the
+    # change reaches the member. It is not staleness: it holds whatever
+    # `after_days` says, and it lasts until they decide on the current text.
+    outdated = any(offer.get("outdated") for offer in offers)
+    # Declining everything in the form leaves no decision, and was still an answer.
+    presented = any(offer.get("presented_version") is not None for offer in offers)
+    asked = seen_at is not None or decided_at is not None or outdated or presented
 
-    if not asked or after_days <= 0:
-        return Prompt(asked=asked, review_due=False)
+    if outdated:
+        return Prompt(asked=True, review_due=True)
+    if not asked:
+        return Prompt(asked=False, review_due=False)
+    # Not staleness either: an offer nobody showed them is due now.
+    if _unasked(offers, seen_offers):
+        return Prompt(asked=True, review_due=True)
+    if after_days <= 0:
+        return Prompt(asked=True, review_due=False)
 
     stamps = [stamp for stamp in (decided_at,) if stamp is not None]
     if seen_at is not None:
         stamps.append(_as_utc(seen_at))
+    if not stamps:
+        # Asked only in the form, which keeps no date for a decline.
+        return Prompt(asked=True, review_due=False)
 
     return Prompt(asked=True, review_due=max(stamps) < now - timedelta(days=after_days))

@@ -66,17 +66,17 @@ async def list_onboarding_seen_pages(user_id: str, db: AsyncSession) -> list[str
     return list(result.scalars().all())
 
 
-async def get_onboarding_page_seen_at(
+async def get_onboarding_page_view(
     user_id: str, page_key: str, db: AsyncSession
-) -> datetime | None:
-    """When this user last saw one page, or `None` if they never have.
+) -> UserOnboardingView | None:
+    """The whole row for one page, or `None` if they never saw it.
 
     `list_onboarding_seen_pages` answers *whether*, which is all a tour needs.
-    The data-sharing banner needs *when*: it returns once the decision behind it
-    has gone stale.
+    The data-sharing banner needs *when* — it returns once the decision behind it
+    has gone stale — and *which offers* were on screen.
     """
     result = await db.execute(
-        select(UserOnboardingView.seen_at).filter(
+        select(UserOnboardingView).filter(
             UserOnboardingView.user_id == user_id,
             UserOnboardingView.page_key == page_key,
         )
@@ -85,7 +85,11 @@ async def get_onboarding_page_seen_at(
 
 
 async def mark_onboarding_page_seen(
-    user_id: str, page_key: str, db: AsyncSession
+    user_id: str,
+    page_key: str,
+    db: AsyncSession,
+    *,
+    offer_set: list[dict] | None = None,
 ) -> UserOnboardingView:
     """Mark one onboarding page as seen, now.
 
@@ -93,6 +97,9 @@ async def mark_onboarding_page_seen(
     standing. Without that a dismissal could never be repeated: the data-sharing
     banner returns when the row goes stale, and a member who dismissed it a
     second time would find it back on the next page load, permanently.
+
+    ``offer_set``, when given, replaces what was recorded as shown. Left out, the
+    previous one stands — a tour marking the page seen knows nothing about offers.
     """
     result = await db.execute(
         select(UserOnboardingView).filter(
@@ -106,6 +113,8 @@ async def mark_onboarding_page_seen(
         db.add(view)
     else:
         view.seen_at = datetime.now(timezone.utc)
+    if offer_set is not None:
+        view.offer_set = offer_set
     await db.commit()
     await db.refresh(view)
     return view

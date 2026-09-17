@@ -25,7 +25,10 @@ from celine.webapp.api.schemas import (
     DataSharingHistoryResponse,
     DataSharingStatusResponse,
 )
-from celine.webapp.db.user_settings import get_onboarding_page_seen_at
+from celine.webapp.db.user_settings import (
+    get_onboarding_page_view,
+    mark_onboarding_page_seen,
+)
 from celine.webapp.services import data_sharing as service
 from celine.webapp.settings import settings
 
@@ -80,10 +83,17 @@ async def _status(answer, user: UserDep, db: DbDep) -> DataSharingStatusResponse
     and the same route (`POST /api/onboarding/seen`) every in-app tour uses.
     """
     offers = answer.offers or []
+    view = await get_onboarding_page_view(user.sub, service.PAGE_KEY, db)
+    recorded = view.offer_set if view is not None else None
     prompt = service.prompt_state(
-        seen_at=await get_onboarding_page_seen_at(user.sub, service.PAGE_KEY, db),
+        seen_at=view.seen_at if view is not None else None,
         offers=offers,
         after_days=settings.data_sharing_review_after_days,
+        seen_offers=(
+            None
+            if recorded is None
+            else {str(item.get("id")): item.get("version") for item in recorded}
+        ),
     )
     return DataSharingStatusResponse(
         has_identity=answer.has_identity,
@@ -130,6 +140,27 @@ async def get_data_sharing(
     return await _status(await service.get_status(onboarding), user, db)
 
 
+@router.post("/seen", response_model=DataSharingStatusResponse)
+async def mark_data_sharing_seen(
+    user: UserDep, onboarding: OnboardingDep, db: DbDep
+) -> DataSharingStatusResponse:
+    """The member closed the banner: record when, and which offers were on offer.
+
+    Replaces `POST /api/onboarding/seen` for this page. That route knows only the
+    page key; this one asks onboarding for the offers as they stand, so a later
+    offer, or a new version, is asked about and the ones already shown are not.
+
+    Declared before `/{offer_id}`, which would otherwise take `seen` as an offer.
+    """
+    _require_feature()
+
+    answer = await service.get_status(onboarding)
+    await mark_onboarding_page_seen(
+        user.sub, service.PAGE_KEY, db, offer_set=service.offer_set(answer.offers or [])
+    )
+    return await _status(answer, user, db)
+
+
 @router.post("/{offer_id}", response_model=DataSharingStatusResponse)
 async def set_data_sharing(
     offer_id: str,
@@ -151,6 +182,10 @@ async def set_data_sharing(
     _require_feature()
 
     answer = await service.set_decision(onboarding, offer_id, enabled=body.enabled)
+    # Deciding happens on the page that lists every offer, so the whole set was seen.
+    await mark_onboarding_page_seen(
+        user.sub, service.PAGE_KEY, db, offer_set=service.offer_set(answer.offers or [])
+    )
     return await _status(answer, user, db)
 
 

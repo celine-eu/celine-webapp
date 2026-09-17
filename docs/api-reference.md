@@ -233,15 +233,27 @@ reads both.
 **The prompt.** Two further fields say whether the app should ask:
 
 - `asked` — false only for a member who has neither dismissed the banner nor decided
-  anything, including in onboarding's own funnel. That is the first-run sequence.
+  anything, nor been shown the offers in onboarding's own funnel. That is the first-run
+  sequence.
 - `review_due` — true when the newest of their dismissal and their decisions is older
   than `DATA_SHARING_REVIEW_AFTER_DAYS`. That is the "you are sharing data, review your
   settings" reminder.
 
 Being asked is this service's state, not onboarding's: onboarding holds no session with
-the member. It is recorded by `POST /api/onboarding/seen` with `{"page_key":
-"data-sharing"}`, the same route every in-app tour uses, and marking it again moves the
-timestamp forward so the reminder can be dismissed more than once.
+the member. It is recorded by `POST /api/data-sharing/seen` (below), and marking it again
+moves the timestamp forward so the reminder can be dismissed more than once.
+
+`review_due` is also true when a decidable offer is neither granted nor was shown at its
+current version — by the last dismissal or decision here, or by the onboarding form
+(`presented_version` on the offer). A dismissal recorded before the offer set was stored
+covers no offer, so that member is asked once more.
+
+### `POST /api/data-sharing/seen`
+
+The member closed the banner. Records the time and the decidable offers as they stand
+(ids and versions, read from onboarding) under `data-sharing` in `user_onboarding_views`,
+and answers like `GET /api/data-sharing`. `POST /api/data-sharing/{offer_id}` records the
+same set after a decision.
 
 ### `POST /api/data-sharing/{offer_id}`
 

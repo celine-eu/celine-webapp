@@ -99,8 +99,12 @@ for them. This service holds no credential and no service account of its own.
 `review_due`, so the app can show a first-run sequence to somebody who has never been
 asked and a "review your settings" reminder to somebody whose decision has gone stale
 (`DATA_SHARING_REVIEW_AFTER_DAYS`, 180 by default). A dismissal is recorded through
-`POST /api/onboarding/seen` under the `data-sharing` key — the same table every in-app
-tour uses, and no new one.
+`POST /api/data-sharing/seen` under the `data-sharing` key of the table every in-app tour
+uses, together with the offers (ids and versions) that were on offer; a decision records
+the same. The reminder is also due, whatever the date, when an offer is new or its version
+moved since the member was shown it — here, or in the onboarding form, which onboarding
+reports as `presented_version`. An offer shown at its current version and not granted was
+declined, and is not asked about again.
 
 ## Settings
 

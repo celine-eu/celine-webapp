@@ -152,7 +152,7 @@ def client(onboarding: FakeOnboarding, db_sessionmaker) -> TestClient:
 def dismissed(db_sessionmaker):
     """Record a dismissal of the banner, as `POST /api/onboarding/seen` would."""
 
-    def _dismiss(*, days_ago: int = 0) -> None:
+    def _dismiss(*, days_ago: int = 0, offer_set: list | None = None) -> None:
         async def _write() -> None:
             async with db_sessionmaker() as session:
                 session.add(
@@ -160,6 +160,7 @@ def dismissed(db_sessionmaker):
                         user_id=USER_ID,
                         page_key=service.PAGE_KEY,
                         seen_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+                        offer_set=offer_set,
                     )
                 )
                 await session.commit()
@@ -674,6 +675,149 @@ class TestThePrompt:
         assert body["review_due"] is False
 
 
+def _offer(offer_id: str = "a", **extra) -> dict:
+    """A decidable offer at version 1.0, undecided unless told otherwise."""
+    return {
+        "id": offer_id,
+        "can_decide": True,
+        "consent_text_version": "1.0",
+        "granted": False,
+        "decided_at": None,
+        **extra,
+    }
+
+
+class TestOffersNobodyAsked:
+    """D20: a new or changed offer is asked about; a declined one is not.
+
+    The member's decline leaves no decision anywhere, so "shown" is read from
+    two records: the onboarding form's `presented_version`, and the set this app
+    stores when the member decides or dismisses.
+    """
+
+    def _status(self, onboarding, offers):
+        # The same answer for a read and for a decision on `a`.
+        for path in ("/api/me/data-sharing", "/api/me/data-sharing/a"):
+            onboarding.answer(
+                path,
+                httpx.Response(200, json={"has_identity": True, "state": "ok", "offers": offers}),
+            )
+
+    def test_declined_in_the_form_is_asked_but_not_due(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        """Declining everything in the form is an answer, and it has no date."""
+        self._status(onboarding, [_offer(presented_version="1.0")])
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert (body["asked"], body["review_due"]) == (True, False)
+
+    def test_an_offer_added_after_the_form_is_due(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        self._status(onboarding, [_offer(presented_version="1.0"), _offer("b")])
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert (body["asked"], body["review_due"]) == (True, True)
+
+    def test_a_declined_offer_whose_version_moved_is_due(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        self._status(onboarding, [_offer(consent_text_version="1.1", presented_version="1.0")])
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert body["review_due"] is True
+
+    def test_dismissing_records_the_set_and_the_banner_stays_away(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding, db_sessionmaker
+    ):
+        self._status(onboarding, [_offer(presented_version="1.0"), _offer("b")])
+        assert client.get("/api/data-sharing", headers=auth_headers).json()["review_due"]
+
+        body = client.post("/api/data-sharing/seen", headers=auth_headers).json()
+
+        assert body["review_due"] is False
+        assert onboarding.paths[-1] == "/api/me/data-sharing"
+        assert _recorded_set(db_sessionmaker) == [
+            {"id": "a", "version": "1.0"},
+            {"id": "b", "version": "1.0"},
+        ]
+        assert client.get("/api/data-sharing", headers=auth_headers).json()["review_due"] is False
+
+    def test_a_dismissal_before_the_set_existed_covers_nothing(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding, dismissed
+    ):
+        """A row with no set says when, not what. Asked once more, then recorded."""
+        self._status(onboarding, [_offer()])
+        dismissed()
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert body["review_due"] is True
+
+    def test_a_dismissal_that_saw_an_older_version_does_not_cover_the_new_one(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding, dismissed
+    ):
+        self._status(onboarding, [_offer(consent_text_version="2.0")])
+        dismissed(offer_set=[{"id": "a", "version": "1.0"}])
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert body["review_due"] is True
+
+    def test_deciding_records_the_set(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding, db_sessionmaker
+    ):
+        self._status(onboarding, [_offer(granted=True, decided_at="2026-09-16T10:00:00Z"), _offer("b")])
+
+        body = client.post(
+            "/api/data-sharing/a", json={"enabled": True}, headers=auth_headers
+        ).json()
+
+        assert body["review_due"] is False
+        assert [item["id"] for item in _recorded_set(db_sessionmaker)] == ["a", "b"]
+
+    def test_a_contract_offer_is_never_due(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding, dismissed
+    ):
+        """Nothing to decide, so nothing to ask — whether or not it was shown."""
+        self._status(
+            onboarding,
+            [_offer(presented_version="1.0"), _offer("c", can_decide=False)],
+        )
+
+        body = client.get("/api/data-sharing", headers=auth_headers).json()
+
+        assert body["review_due"] is False
+
+    def test_seen_is_not_taken_for_an_offer_id(
+        self, client: TestClient, auth_headers: dict, enabled, onboarding
+    ):
+        client.post("/api/data-sharing/seen", headers=auth_headers)
+
+        assert all(req.method == "GET" for req in onboarding.requests)
+
+
+def _recorded_set(db_sessionmaker) -> list | None:
+    async def _read():
+        from sqlalchemy import select
+
+        async with db_sessionmaker() as session:
+            return (
+                await session.execute(
+                    select(UserOnboardingView.offer_set).filter(
+                        UserOnboardingView.user_id == USER_ID,
+                        UserOnboardingView.page_key == service.PAGE_KEY,
+                    )
+                )
+            ).scalar_one_or_none()
+
+    return asyncio.run(_read())
+
+
 class TestPromptState:
     """The comparison itself, without a database or an app."""
 
@@ -716,6 +860,40 @@ class TestPromptState:
             seen_at=self.NOW - timedelta(days=4000),
             offers=self._offers(None),
             after_days=0,
+            now=self.NOW,
+        )
+
+        assert state == service.Prompt(asked=True, review_due=False)
+
+    def test_a_consent_to_an_older_version_is_due_for_review(self):
+        """Not staleness: a changed offer is due even with the reminder switched off
+        and a decision made yesterday."""
+        state = service.prompt_state(
+            seen_at=None,
+            offers=[
+                {
+                    "id": "a",
+                    "decided_at": (self.NOW - timedelta(days=1)).isoformat(),
+                    "outdated": True,
+                }
+            ],
+            after_days=0,
+            now=self.NOW,
+        )
+
+        assert state == service.Prompt(asked=True, review_due=True)
+
+    def test_a_current_consent_is_not_due(self):
+        state = service.prompt_state(
+            seen_at=None,
+            offers=[
+                {
+                    "id": "a",
+                    "decided_at": (self.NOW - timedelta(days=1)).isoformat(),
+                    "outdated": False,
+                }
+            ],
+            after_days=180,
             now=self.NOW,
         )
 

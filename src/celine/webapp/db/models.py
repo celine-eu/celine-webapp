@@ -70,6 +70,10 @@ class UserOnboardingView(Base):
     seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    #: For `data-sharing` only: the decidable offers the member was shown when
+    #: they last decided or dismissed, as `[{"id", "version"}]`. What was on the
+    #: screen, not what they did with it.
+    offer_set: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
 
 class SuggestionInteraction(Base):
