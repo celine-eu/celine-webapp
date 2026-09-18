@@ -16,7 +16,11 @@ dependencies = [
   "python-jose[cryptography]>=3.3.0",
   "asyncpg>=0.31.0",
   "sqlalchemy-utils>=0.42.1",
-  "celine-sdk>=1.17.1",
+  # 1.17.3, not 1.17.1: `celine.webapp.api.feedback` imports
+  # `celine.sdk.auth.jwt.organization_groups`, which arrived in 1.17.3. The floor
+  # was one patch too low, so a resolve was free to pick 1.17.1 — and did, which
+  # is an ImportError at startup rather than anything a test would catch.
+  "celine-sdk>=1.17.3",
   "typer>=0.16.1",
 ]
 
