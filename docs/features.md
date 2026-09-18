@@ -88,7 +88,10 @@ it and pass the answer back, because the browser talks only to this service.
 
 The offers a member sees are read from the published vocabulary on each request rather
 than from a local copy — two copies of the text somebody agrees to is how the thing
-displayed and the thing recorded drift apart.
+displayed and the thing recorded drift apart. An offer may carry `text`, the community's
+own wording per locale, which onboarding attaches only when it was written for the
+offer's current version (onboarding's `docs/data-sharing.md`). It is forwarded unchanged;
+the page shows it in the member's language and falls back to the generic label.
 
 **Withdrawal is the point of the surface.** The onboarding wizard can only grant, so
 without these routes a consent could be given and never taken back. Every call is made
