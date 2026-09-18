@@ -2,9 +2,9 @@
 
 import re
 from datetime import datetime
-from pydantic import BaseModel, Field
-from pydantic import model_validator
 from typing import Literal, Optional
+
+from pydantic import BaseModel, Field, model_validator
 
 
 # User schemas
@@ -398,6 +398,51 @@ class FeedbackCreateRequest(BaseModel):
 class FeedbackCreateResponse(BaseModel):
     id: str
     created_at: datetime
+
+
+FeedbackState = Literal["new", "seen", "resolved"]
+
+
+class FeedbackStatusCounts(BaseModel):
+    new: int = 0
+    seen: int = 0
+    resolved: int = 0
+
+
+class FeedbackItemResponse(BaseModel):
+    id: str
+    rating: int
+    comment: Optional[str] = None
+    page_url: str
+    page_title: Optional[str] = None
+    page_path: Optional[str] = None
+    locale: Optional[str] = None
+    timezone: Optional[str] = None
+    viewport_width: Optional[int] = None
+    viewport_height: Optional[int] = None
+    screen_width: Optional[int] = None
+    screen_height: Optional[int] = None
+    color_scheme: Optional[Literal["light", "dark"]] = None
+    client_timestamp: Optional[datetime] = None
+    extra: dict = Field(default_factory=dict)
+    has_screenshot: bool = False
+    status: FeedbackState
+    seen_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class FeedbackListResponse(BaseModel):
+    community_key: str
+    page: int
+    page_size: int
+    total: int
+    counts: FeedbackStatusCounts
+    items: list[FeedbackItemResponse]
+
+
+class FeedbackStatusUpdate(BaseModel):
+    status: Literal["seen", "resolved"]
 
 
 # ── Data sharing ──────────────────────────────────────────────────────────────
