@@ -10,6 +10,8 @@ from fastapi import APIRouter, Query
 from celine.webapp.api.deps import DTDep, UserDep
 from celine.webapp.api.schemas import ForecastHourItem, ForecastResponse
 
+from celine.webapp.services.log_safety import failure
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["forecast"])
@@ -90,7 +92,7 @@ async def forecast(
                     device_id = asset.sensor_id
                     break
     except Exception as exc:
-        logger.warning("Failed to fetch assets for %s: %s", user.sub, exc)
+        logger.warning("forecast: asset lookup failed (%s)", failure(exc))
 
     # Time window: today 05:00 → (today + days) 00:00
     tz = timezone.utc
@@ -108,7 +110,7 @@ async def forecast(
                 },
             )
         except Exception as exc:
-            logger.warning("total_meters_forecast fetch failed: %s", exc)
+            logger.warning("total_meters_forecast fetch failed (%s)", failure(exc))
             return None
 
     async def fetch_user_consumption():
@@ -126,7 +128,7 @@ async def forecast(
                 },
             )
         except Exception as exc:
-            logger.warning("meter_forecast (individual consumption) fetch failed: %s", exc)
+            logger.warning("meter_forecast (individual consumption) fetch failed (%s)", failure(exc))
             return None
 
     meter_res, consumption_res = await asyncio.gather(

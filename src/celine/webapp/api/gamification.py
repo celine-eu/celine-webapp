@@ -18,6 +18,8 @@ from celine.webapp.api.schemas import (
 )
 from celine.webapp.db.models import UserBadge, SuggestionInteraction
 
+from celine.webapp.services.log_safety import failure
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["gamification"])
@@ -78,7 +80,7 @@ def _season_summary_from_row(row: dict) -> SeasonSummary | None:
             ),
         )
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("rec_points_leaderboard row unusable, falling back: %s", exc)
+        logger.warning("rec_points_leaderboard row unusable, falling back (%s)", failure(exc))
         return None
 
 
@@ -96,7 +98,10 @@ async def _fetch_leaderboard_row(dt, participant_id: str, device_id: str) -> dic
             payload={"device_id": device_id},
         )
     except Exception as exc:
-        logger.warning("rec_points_leaderboard fetch failed (fallback to all-time sum): %s", exc)
+        logger.warning(
+            "rec_points_leaderboard fetch failed, falling back to the all-time sum (%s)",
+            failure(exc),
+        )
         return None
     if res and res.count > 0:
         return res.items[0].to_dict()
@@ -155,9 +160,13 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
                 if asset.sensor_id:
                     device_id = asset.sensor_id
                     break
-        logger.info("gamification: user=%s device_id=%r assets_count=%d", user.sub, device_id, len(assets.items) if assets and assets.items else 0)
+        logger.debug(
+            "gamification: assets=%d metered=%s",
+            len(assets.items) if assets and assets.items else 0,
+            bool(device_id),
+        )
     except Exception as exc:
-        logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
+        logger.warning("gamification: asset lookup failed (%s)", failure(exc))
 
     # Season totals + anonymous rank from rec_points_leaderboard (one current-season row).
     season: SeasonSummary | None = None
@@ -177,28 +186,29 @@ async def gamification(user: UserDep, db: DbDep, dt: DTDep) -> GamificationRespo
                 fetcher_id="rec_participant_points",
                 payload={"device_id": device_id},
             )
-            logger.info(
-                "gamification: rec_participant_points user=%s device=%s count=%d",
-                user.sub, device_id, pts_res.count if pts_res else 0,
+            logger.debug(
+                "gamification: rec_participant_points count=%d",
+                pts_res.count if pts_res else 0,
             )
             if pts_res and pts_res.count > 0:
                 for item in pts_res.items:
                     d = item.to_dict()
-                    logger.debug("gamification: raw row keys=%s values=%s", list(d.keys()), {k: d[k] for k in list(d.keys())[:5]})
                     day = str(d.get("ts_date", ""))
                     pts = int(d.get("daily_points") or 0)
                     total_points += pts
                     daily_points.append(DailyPointsItem(date=day, points=pts))
         except Exception as exc:
-            logger.warning("rec_participant_points fetch failed: %s", exc)
+            logger.warning("rec_participant_points fetch failed (%s)", failure(exc))
     else:
-        logger.warning("No device_id found for user %s — daily points unavailable", user.sub)
+        logger.info("gamification: no metered asset, daily points unavailable")
     daily_points.sort(key=lambda x: x.date)
 
     if season is not None:
         total_points = season.total_points
 
-    logger.info("gamification: user=%s total_points=%d daily_entries=%d", user.sub, total_points, len(daily_points))
+    logger.debug(
+        "gamification: total_points=%d daily_entries=%d", total_points, len(daily_points)
+    )
 
     # Ranking comes exclusively from the season leaderboard (anonymous rank, own row
     # only). The daily rec_gamification_summary fetcher is no longer called here —
@@ -246,7 +256,7 @@ async def gamification_history(user: UserDep, flexibility: FlexibilityDep, dt: D
                     device_id = asset.sensor_id
                     break
     except Exception as exc:
-        logger.warning("Asset lookup failed for %s: %s", user.sub, exc)
+        logger.warning("flexibility history: asset lookup failed (%s)", failure(exc))
 
     if device_id:
         try:
@@ -261,7 +271,7 @@ async def gamification_history(user: UserDep, flexibility: FlexibilityDep, dt: D
                     day = str(d.get("ts_date", ""))
                     real_daily_points[day] = int(d.get("daily_points") or 0)
         except Exception as exc:
-            logger.warning("rec_participant_points fetch failed for history: %s", exc)
+            logger.warning("rec_participant_points fetch failed for history (%s)", failure(exc))
 
     items: list[FlexibilityHistoryItem] = []
     total_earned = 0

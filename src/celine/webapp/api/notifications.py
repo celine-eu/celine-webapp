@@ -28,6 +28,8 @@ from celine.sdk.openapi.nudging.models import (
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
+from celine.webapp.services.log_safety import failure
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,14 +50,11 @@ async def list_notifications(
     except UnexpectedStatus as exc:
         if exc.status_code in (401, 403):
             logger.warning(
-                "Nudging rejected the forwarded token for %s with %s; returning no notifications",
-                user.sub,
+                "Nudging rejected the forwarded token with %s; returning no notifications",
                 exc.status_code,
             )
             return []
-        logger.error(
-            "Nudging list_notifications failed for %s with %s", user.sub, exc.status_code
-        )
+        logger.error("Nudging list_notifications failed with %s", exc.status_code)
         raise HTTPException(status_code=502, detail="Notifications unavailable") from exc
 
     return [

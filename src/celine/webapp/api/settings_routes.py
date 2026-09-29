@@ -10,6 +10,8 @@ from celine.webapp.api.schemas import SettingsModel
 from celine.webapp.db.user_settings import load_user_settings, update_user_settings
 
 router = APIRouter(prefix="/api", tags=["settings"])
+from celine.webapp.services.log_safety import failure
+
 logger = logging.getLogger(__name__)
 SUPPORTED_NOTIFICATION_LANGS = {"it", "en", "es"}
 
@@ -66,7 +68,7 @@ async def get_settings(
         email_enabled = bool(getattr(prefs, "channel_email", False))
         email = str(getattr(prefs, "email", "") or "")
     except Exception as exc:
-        logger.error("Could not load nudging preferences for %s: %s", user.sub, exc)
+        logger.error("Could not load nudging preferences (%s)", failure(exc))
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not load notification preferences",
@@ -77,11 +79,7 @@ async def get_settings(
             lang=lang or _preferred_lang(request)
         )
     except Exception as exc:
-        logger.warning(
-            "Could not load nudging notification catalog for %s: %s",
-            user.sub,
-            exc,
-        )
+        logger.warning("Could not load nudging notification catalog (%s)", failure(exc))
 
     return SettingsModel(
         simple_mode=user_settings.simple_mode,
@@ -141,9 +139,8 @@ async def update_settings(
         )
     except Exception as exc:
         logger.warning(
-            "Could not update nudging notification kinds for %s, retrying without kinds: %s",
-            user.sub,
-            exc,
+            "Could not update nudging notification kinds, retrying without kinds (%s)",
+            failure(exc),
         )
         try:
             await nudging_client.update_preferences(
@@ -153,11 +150,7 @@ async def update_settings(
                 lang=_normalize_lang(lang) or _preferred_lang(request),
             )
         except Exception as fallback_exc:
-            logger.error(
-                "Could not update nudging preferences for %s: %s",
-                user.sub,
-                fallback_exc,
-            )
+            logger.error("Could not update nudging preferences (%s)", failure(fallback_exc))
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Could not update notification preferences",

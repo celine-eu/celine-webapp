@@ -14,6 +14,8 @@ from celine.webapp.api.deps import DbDep, DTDep, UserDep
 from celine.webapp.api.schemas import OverviewResponse
 
 
+from celine.webapp.services.log_safety import failure
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["overview"])
@@ -197,7 +199,7 @@ async def overview(
         # via `UserDeliveryPointsResponseSchema` — rather than reading them off the
         # membership, where they are not.
     except Exception as ex:
-        logger.warning(f"Failed to fetch devices for {user.sub}")
+        logger.warning("overview: device lookup failed (%s)", failure(ex))
 
     # Initialize response data
     user_data: dict = {
@@ -264,10 +266,9 @@ async def overview(
 
         except Exception as exc:
             logger.warning(
-                "Failed to fetch meter data for participant %s (device %s): %s",
-                participant_id,
-                device_ids,
-                exc,
+                "overview: meter data fetch failed for %d device(s) (%s)",
+                len(device_ids),
+                failure(exc),
             )
 
     # -------------------------------------------------------------------------
@@ -299,11 +300,7 @@ async def overview(
                     user_data.get("consumption_kwh"),
                 )
         except Exception as exc:
-            logger.warning(
-                "Failed to fetch user trend for participant %s: %s",
-                participant_id,
-                exc,
-            )
+            logger.warning("overview: member trend fetch failed (%s)", failure(exc))
 
     # Build user daily trend from meters_data (import/export) + virtual consumption (shared energy)
     if meters_items_raw or virtual_items_raw:
@@ -357,9 +354,9 @@ async def overview(
 
         except Exception as exc:
             logger.warning(
-                "Failed to fetch REC self-consumption for community %s: %s",
+                "Failed to fetch REC self-consumption for community %s (%s)",
                 community_id,
-                exc,
+                failure(exc),
             )
 
     # Fallback trend if DT didn't provide data
