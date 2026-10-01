@@ -429,7 +429,11 @@ class TestReadDecisions:
         The member sees the same retryable answer either way."""
         onboarding.unreachable = True
 
-        assert client.get("/api/data-sharing", headers=auth_headers).status_code == 503
+        response = client.get("/api/data-sharing", headers=auth_headers)
+
+        assert response.status_code == 503
+        # The connection error names onboarding's host; that is for the log.
+        assert "refused" not in response.text
 
     def test_a_missing_upstream_surface_is_not_the_feature_gate(
         self, client: TestClient, auth_headers: dict, enabled, onboarding

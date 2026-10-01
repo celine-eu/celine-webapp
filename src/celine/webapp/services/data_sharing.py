@@ -74,8 +74,10 @@ async def _forwarding(what: str):
         ) from exc
     except httpx.HTTPError as exc:
         # Never reached onboarding at all. Worth retrying, like a 503 from it.
+        # The exception names internal hosts, so it goes to the log, not the body.
+        logger.warning("Onboarding unreachable for %s: %s", what, exc)
         raise HTTPException(
-            status_code=503, detail=f"Onboarding unreachable: {exc}"
+            status_code=503, detail="Data sharing is temporarily unavailable"
         ) from exc
 
 
