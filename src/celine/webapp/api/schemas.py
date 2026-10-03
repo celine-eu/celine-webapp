@@ -26,6 +26,16 @@ class UserInDB(UserBase):
 
 
 # Me endpoint
+class LegalDocumentOut(BaseModel):
+    """One document of the member's community the terms gate shows."""
+
+    document: str
+    url: str
+    version: Optional[str] = None
+    title: Optional[str] = None
+    required: bool = True
+
+
 class MeResponse(BaseModel):
     """Response for /api/me endpoint."""
 
@@ -33,6 +43,9 @@ class MeResponse(BaseModel):
     terms_required: bool
     policy_version: str
     accepted_policy_version: Optional[str] = None
+    # With a legal host: the community's documents, each saying whether it must be
+    # accepted (again). None: the deployment-wide `POLICY_VERSION` gate applies.
+    legal_documents: Optional[list[LegalDocumentOut]] = None
     simple_mode: bool = False
     font_scale: float = 1.0
     notification_permission: Literal["default", "granted", "denied"] = "default"
@@ -51,10 +64,16 @@ class OnboardingSeenRequest(BaseModel):
 
 
 # Terms
+class AcceptedDocument(BaseModel):
+    document: str
+    version: Optional[str] = None
+
+
 class AcceptTermsRequest(BaseModel):
-    """Request to accept terms."""
+    """Request to accept terms: with a legal host, the documents and versions shown."""
 
     accept: bool = True
+    documents: Optional[list[AcceptedDocument]] = None
 
 
 # Overview

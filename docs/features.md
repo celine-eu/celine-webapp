@@ -2,7 +2,22 @@
 
 ## Terms Acceptance
 
-Terms acceptance is enforced at the frontend layout level. On every page load, the frontend calls `GET /api/me`. If the response has `terms_required: true`, the user is redirected to a terms page. Acceptance is persisted via `POST /api/terms/accept` and checked against the current `POLICY_VERSION` — raising that version requires every member to accept again.
+Terms acceptance is enforced at the frontend layout level. On every page load, the frontend calls `GET /api/me`. If the response has `terms_required: true`, the user is redirected to a terms page. Acceptance is persisted via `POST /api/terms/accept`.
+
+**With a legal host (`LEGAL_BASE_URL`) and a known community**, the gate is per document
+of the member's own community (`celine/webapp/legal.py`): the terms and the privacy notice,
+read from `<LEGAL_BASE_URL>/<community>/current.json`. `/api/me` returns
+`legal_documents` (each with its url, version, title and `required`), and the frontend
+posts back the documents and versions it showed. Each acceptance is a row of its own
+(community, document, version, language, url, sha256). A member is asked again for one
+document when its version changes, without being asked about the other. The version
+recorded is the server's; a stale page gets 409. Before the host has ever answered, a
+document is accepted without a version, and the date decides against the version's
+`published_at` once it is known. `current.json` is refreshed every five minutes, and the
+last good copy is kept while the host is down.
+
+**Otherwise** (no legal host, or the member's community is unknown) the gate is the
+deployment-wide `POLICY_VERSION`, as before: raising it asks every member again.
 
 ## Overview and Energy Data
 

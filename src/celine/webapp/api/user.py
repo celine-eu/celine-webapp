@@ -5,8 +5,10 @@ from fastapi import APIRouter, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from celine.webapp.api.deps import UserDep, DbDep, get_client_ip
+from celine.webapp import legal
+from celine.webapp.api.deps import UserDep, DbDep, _extract_token, get_client_ip
 from celine.webapp.api.schemas import (
+    LegalDocumentOut,
     MeResponse,
     AcceptTermsRequest,
     OnboardingSeenRequest,
@@ -39,12 +41,53 @@ async def get_accepted_policy_version(user_id: str, db: AsyncSession) -> str | N
     """
     result = await db.execute(
         select(PolicyAcceptance)
-        .filter(PolicyAcceptance.user_id == user_id)
+        .filter(PolicyAcceptance.user_id == user_id, PolicyAcceptance.document.is_(None))
         .order_by(PolicyAcceptance.accepted_at.desc())
         .limit(1)
     )
     acceptance = result.scalars().first()
     return acceptance.policy_version if acceptance else None
+
+
+async def _latest_acceptance(
+    user_id: str, community_key: str, document: str, db: AsyncSession
+) -> PolicyAcceptance | None:
+    result = await db.execute(
+        select(PolicyAcceptance)
+        .filter(
+            PolicyAcceptance.user_id == user_id,
+            PolicyAcceptance.community_key == community_key,
+            PolicyAcceptance.document == document,
+        )
+        .order_by(PolicyAcceptance.accepted_at.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
+async def community_documents(
+    request: Request, user_sub: str, db: AsyncSession
+) -> tuple[str, list[tuple[legal.LegalDocument, bool]]] | None:
+    """With a legal host and a known community: each gate document and whether it must be
+    accepted (`celine.webapp.legal`). None: the deployment-wide `POLICY_VERSION` applies."""
+    base = app_settings.legal_base_url
+    if not base:
+        return None
+    key = await legal.community_key_of(user_sub, _extract_token(request), app_settings.rec_registry_url)
+    if not key:
+        return None
+    known = await legal.current(base, key)
+    documents = legal.gate_documents(base, key, known, legal.locales_from(request.headers.get("accept-language")))
+    out = []
+    for document in documents:
+        row = await _latest_acceptance(user_sub, key, document.document, db)
+        out.append((document, legal.needs_acceptance(
+            document,
+            row.policy_version if row else None,
+            row.accepted_at if row else None,
+            row is not None,
+        )))
+    return key, out
 
 
 async def terms_required_for(user_id: str, db: AsyncSession) -> tuple[bool, str | None]:
@@ -85,6 +128,15 @@ async def me(
     """Get current user information."""
 
     required, accepted_version = await terms_required_for(user.sub, db)
+    legal_documents = None
+    per_document = await community_documents(request, user.sub, db)
+    if per_document is not None:
+        _, documents = per_document
+        legal_documents = [
+            LegalDocumentOut(document=d.document, url=d.url, version=d.version, title=d.title, required=needed)
+            for d, needed in documents
+        ]
+        required = any(needed for _, needed in documents)
     settings = await get_user_settings(user.sub, db)
     onboarding_seen_pages = await list_onboarding_seen_pages(user.sub, db)
 
@@ -101,6 +153,7 @@ async def me(
         terms_required=required,
         policy_version=app_settings.policy_version,
         accepted_policy_version=accepted_version,
+        legal_documents=legal_documents,
         simple_mode=settings.simple_mode,
         font_scale=settings.font_scale,
         notification_permission=notification_permission,
@@ -133,6 +186,37 @@ async def accept_terms(
 
     if not body.accept:
         raise HTTPException(status_code=400, detail="accept must be true")
+
+    per_document = await community_documents(request, user.sub, db)
+    if per_document is not None:
+        key, documents = per_document
+        shown = {d.document: d.version for d in body.documents or []}
+        now = datetime.now(timezone.utc)
+        for document, needed in documents:
+            if not needed:
+                continue
+            # The version recorded is the one this service shows, never the client's;
+            # a client naming another one saw an older page.
+            sent = shown.get(document.document)
+            if document.version is not None and sent is not None and sent != document.version:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{document.document}: version {sent} was shown, the current one is "
+                    f"{document.version}; reload the page",
+                )
+            db.add(PolicyAcceptance(
+                user_id=user.sub,
+                policy_version=document.version,
+                accepted_at=now,
+                accepted_from_ip=get_client_ip(request),
+                community_key=key,
+                document=document.document,
+                locale=document.locale,
+                document_url=document.url,
+                document_sha256=document.sha256,
+            ))
+        await db.commit()
+        return SuccessResponse()
 
     # Already accepted this version? (`first`, not `one`: nothing makes the pair unique.)
     result = await db.execute(

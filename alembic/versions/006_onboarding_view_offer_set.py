@@ -28,10 +28,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "user_onboarding_views",
-        sa.Column("offer_set", sa.JSON(), nullable=True),
-    )
+    # Guarded: `007` adds the column too, for a database whose `006` was the other one.
+    columns = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("user_onboarding_views")}
+    if "offer_set" not in columns:
+        op.add_column(
+            "user_onboarding_views",
+            sa.Column("offer_set", sa.JSON(), nullable=True),
+        )
 
 
 def downgrade() -> None:

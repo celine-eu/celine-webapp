@@ -34,11 +34,20 @@ class PolicyAcceptance(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    policy_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    # None when the document's version was not known when it was accepted (the legal
+    # host had not answered): `accepted_at` then says which version it was.
+    policy_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
     accepted_from_ip: Mapped[Optional[str]] = mapped_column(String(50))
+    # Per document (`celine.webapp.legal`): the community and the slot (`terms`,
+    # `privacy`). Both None on a row of the old global `POLICY_VERSION`.
+    community_key: Mapped[Optional[str]] = mapped_column(String(255))
+    document: Mapped[Optional[str]] = mapped_column(String(64))
+    locale: Mapped[Optional[str]] = mapped_column(String(16))
+    document_url: Mapped[Optional[str]] = mapped_column(Text)
+    document_sha256: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 class Settings(Base):
