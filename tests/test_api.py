@@ -103,6 +103,36 @@ def test_accept_terms(client: TestClient, auth_headers: dict):
     assert me_response.json()["terms_required"] is False
 
 
+def test_accepting_a_new_policy_version_keeps_me_working(
+    client: TestClient, auth_headers: dict, monkeypatch: pytest.MonkeyPatch
+):
+    """A version bump re-asks, and the second acceptance does not break /api/me.
+
+    Each version accepted is a row of its own, so a member who accepted twice has two
+    rows; /api/me must read the newest, not expect exactly one.
+    """
+    from celine.webapp.settings import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "policy_version", "2026-01-01")
+    assert client.post("/api/terms/accept", headers=auth_headers, json={"accept": True}).status_code == 200
+
+    monkeypatch.setattr(app_settings, "policy_version", "2026-06-01")
+    me = client.get("/api/me", headers=auth_headers)
+    assert me.status_code == 200
+    assert me.json()["terms_required"] is True
+    assert me.json()["accepted_policy_version"] == "2026-01-01"
+
+    assert client.post("/api/terms/accept", headers=auth_headers, json={"accept": True}).status_code == 200
+    me = client.get("/api/me", headers=auth_headers)
+    assert me.status_code == 200
+    assert me.json()["terms_required"] is False
+    assert me.json()["accepted_policy_version"] == "2026-06-01"
+
+    # Accepting the same version again records nothing new and still answers.
+    assert client.post("/api/terms/accept", headers=auth_headers, json={"accept": True}).status_code == 200
+    assert client.get("/api/me", headers=auth_headers).status_code == 200
+
+
 def test_get_settings(client: TestClient, auth_headers: dict):
     """Test getting user settings."""
     response = client.get("/api/settings", headers=auth_headers)

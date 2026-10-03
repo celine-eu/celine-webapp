@@ -32,13 +32,18 @@ async def ping(user: UserDep) -> dict:
 
 
 async def get_accepted_policy_version(user_id: str, db: AsyncSession) -> str | None:
-    """Get the accepted policy version for a user."""
+    """The policy version the user accepted most recently, if any.
+
+    Every version accepted is a row of its own, so a user who accepted again after a
+    version change has several: read the newest, never expect exactly one.
+    """
     result = await db.execute(
         select(PolicyAcceptance)
         .filter(PolicyAcceptance.user_id == user_id)
         .order_by(PolicyAcceptance.accepted_at.desc())
+        .limit(1)
     )
-    acceptance = result.scalar_one_or_none()
+    acceptance = result.scalars().first()
     return acceptance.policy_version if acceptance else None
 
 
@@ -129,14 +134,16 @@ async def accept_terms(
     if not body.accept:
         raise HTTPException(status_code=400, detail="accept must be true")
 
-    # Check if already accepted
+    # Already accepted this version? (`first`, not `one`: nothing makes the pair unique.)
     result = await db.execute(
-        select(PolicyAcceptance).filter(
+        select(PolicyAcceptance)
+        .filter(
             PolicyAcceptance.user_id == user.sub,
             PolicyAcceptance.policy_version == app_settings.policy_version,
         )
+        .limit(1)
     )
-    existing = result.scalar_one_or_none()
+    existing = result.scalars().first()
 
     if not existing:
         acceptance = PolicyAcceptance(
