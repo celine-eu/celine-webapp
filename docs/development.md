@@ -25,6 +25,28 @@
 | `JWT_HEADER_NAME` | `x-auth-request-access-token` | Header carrying the bearer token |
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | Allowed CORS origins |
 | `CELINE_OIDC_*` | (from celine-sdk defaults) | OIDC settings — issuer, JWKS URI, audience |
+| `CELINE_ENV` | — (hardened) | `dev` accepts the local defaults; see [Deployment posture](#deployment-posture). `ENVIRONMENT` is read when it is empty |
+
+### Deployment posture
+
+The service follows `celine.sdk.posture`: **only `CELINE_ENV=dev` relaxes**. Unset, empty,
+`staging`, `prod` or a typo is hardened, and `create_app()` refuses to start — before the
+database is opened — while:
+
+- `DATABASE_URL` carries a local-stack password;
+- `CELINE_OIDC_CLIENT_SECRET` is empty or equal to `CELINE_OIDC_CLIENT_ID` (only checked when a
+  client id is set; it is used for nudging reminders);
+- `CELINE_OIDC_BASE_URL` / `CELINE_OIDC_JWKS_URI` are left on the SDK's local Keycloak default.
+
+In dev the same list is one startup warning. `task run` exports `CELINE_ENV=dev`;
+`CELINE_ENV=staging task run` runs the same entry point hardened.
+
+`CELINE_OIDC_AUDIENCE` is not required: with it unset the member token's audience is not
+checked (issuer, signature and expiry are). Requiring it needs the realm to put this service's
+audience into the member's token first.
+
+`celine.sdk.posture` ships in the next celine-sdk release; until then link the local checkout
+(`uv pip install --python .venv/bin/python -e ../celine-sdk`).
 
 ### Data sharing
 

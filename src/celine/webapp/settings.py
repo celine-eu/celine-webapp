@@ -7,6 +7,7 @@ from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
+from celine.sdk.posture import PostureGuard
 from celine.sdk.settings.models import OidcSettings
 
 
@@ -46,6 +47,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
+
+    # Deployment posture (celine.sdk.posture): only `dev` relaxes; unset, empty,
+    # `staging`, `prod` or a typo is hardened. CELINE_ENV wins over ENVIRONMENT.
+    # Read through settings so a `.env` file can carry it; `task run` exports dev.
+    celine_env: str = ""
+    environment: str = ""
 
     oidc: OidcSettings = OidcSettings()
 
@@ -116,6 +123,30 @@ class Settings(BaseSettings):
     @property
     def resolved_database_url(self) -> str:
         return resolve_local_dev_url(self.database_url)
+
+    @property
+    def posture_env(self) -> str:
+        """The environment signal, lowercased: CELINE_ENV first, then ENVIRONMENT."""
+        return (self.celine_env.strip() or self.environment.strip()).lower()
+
+
+def posture_guard(settings: Settings) -> PostureGuard:
+    """Every development default this service ships, registered for refusal.
+
+    Outside `CELINE_ENV=dev`, `enforce()` raises with the complete list; in dev it
+    logs one warning. The audience is not required: this service validates the
+    member's token without one today (see docs/development.md), and requiring it
+    needs a realm-side audience mapper first.
+    """
+    guard = PostureGuard("webapp-api", env=settings.posture_env)
+    guard.forbid_dev_database_url("DATABASE_URL", settings.database_url)
+    # Only used when a client id is configured (nudging reminders); an unset id is
+    # not a violation.
+    guard.forbid_secret_equal_to_client_id(
+        "CELINE_OIDC_CLIENT_SECRET", settings.oidc.client_id, settings.oidc.client_secret
+    )
+    guard.require_explicit_oidc(settings.oidc)
+    return guard
 
 
 # Global settings instance

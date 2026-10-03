@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from celine.webapp.settings import settings
+from celine.webapp.settings import posture_guard, settings
 from celine.webapp.db import init_db
 from celine.webapp.routes import create_api_router
 
@@ -18,6 +18,10 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
+    # Before the lifespan opens the database: outside CELINE_ENV=dev a development
+    # default refuses to start (celine.sdk.posture).
+    posture_guard(settings).enforce()
+
     app = FastAPI(
         title="CELINE Webapp API",
         description="Renewable Energy Community Participant Webapp Backend",

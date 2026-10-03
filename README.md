@@ -24,6 +24,11 @@ task run                # listens on http://localhost:8014
 task test               # the suite needs no database and no running services
 ```
 
+`task run` exports `CELINE_ENV=dev`, the only value that accepts the local defaults
+(`celine.sdk.posture`). Unset or any other value is hardened: startup refuses the local
+database password, a client secret equal to the client id, and the SDK's default issuer. See
+[docs/development.md](docs/development.md#deployment-posture).
+
 For the participant frontend, see [celine-frontend](https://github.com/celine-eu/celine-frontend) `apps/webapp`.
 
 ## Features

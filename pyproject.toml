@@ -4,6 +4,8 @@ version = "1.15.1"
 requires-python = ">=3.12"
 readme = "README.md" 
 dependencies = [
+  # Imported directly (`import jwt`); 2.14 is the floor for the advisories fixed there.
+  "pyjwt>=2.14",
   "fastapi>=0.115.0",
   "pydantic>=2.8.0",
   "sqlalchemy>=2.0.49",
@@ -20,6 +22,7 @@ dependencies = [
   # `celine.sdk.auth.jwt.organization_groups`, which arrived in 1.17.3. The floor
   # was one patch too low, so a resolve was free to pick 1.17.1 — and did, which
   # is an ImportError at startup rather than anything a test would catch.
+  # TODO: raise to the celine-sdk release that ships `celine.sdk.posture` (unreleased).
   "celine-sdk>=1.17.3",
   "typer>=0.16.1",
 ]

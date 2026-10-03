@@ -38,6 +38,12 @@ import os
 # every session in a test comes from the per-test engine below.
 # ---------------------------------------------------------------------------
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://test:test@127.0.0.1:1/test"
+
+# The zero-config defaults (a weak database password, the SDK's local issuer) are
+# accepted only in `CELINE_ENV=dev` (celine.sdk.posture: unset is hardened, and
+# `create_app()` — run at import — refuses to start). The hardened posture has its own
+# tests in `test_posture.py`, which pass the environment explicitly.
+os.environ.setdefault("CELINE_ENV", "dev")
 os.environ.setdefault("DATA_SHARING_ENABLED", "false")
 
 import time  # noqa: E402
