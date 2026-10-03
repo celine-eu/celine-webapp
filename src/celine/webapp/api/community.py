@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 
 from celine.webapp.api.deps import UserDep, _extract_token
 from celine.webapp.api.schemas import CommunityMetaResponse
+from celine.webapp.legal import resolve_link
 from celine.webapp.settings import settings
 from celine.sdk.rec_registry import RecRegistryUserClient
 
@@ -54,8 +55,13 @@ async def community_meta(user: UserDep, request: Request) -> CommunityMetaRespon
             )
         return obj
 
+    key = _str(detail.key)
+
+    def _legal(registry_key: str) -> str | None:
+        return resolve_link(_g(links, registry_key), settings.legal_base_url, key, registry_key)
+
     return CommunityMetaResponse(
-        key=_str(detail.key) or "unknown",
+        key=key or "unknown",
         name=_str(detail.name) or "REC",
         description=_str(detail.description),
         legal_name=_str(_g(legal, "name")),
@@ -65,6 +71,8 @@ async def community_meta(user: UserDep, request: Request) -> CommunityMetaRespon
         pec=_str(_g(contact, "pec")),
         phone=_str(_g(contact, "phone")),
         website=_str(_g(links, "website")),
-        terms_url=_str(_g(links, "terms")),
-        privacy_url=_str(_g(links, "privacy_policy")),
+        terms_url=_legal("terms"),
+        privacy_url=_legal("privacy_policy"),
+        statute_url=_legal("statute"),
+        regulations_url=_legal("regulations"),
     )

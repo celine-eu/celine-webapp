@@ -21,6 +21,7 @@
 | `SMART_METER_API_URL` | — | Optional smart meter API URL |
 | `NUDGING_INGEST_SCOPE` | `nudging.ingest` | OAuth2 scope for nudging ingest calls |
 | `POLICY_VERSION` | `2024-01-01` | Current terms version string |
+| `LEGAL_BASE_URL` | — | The legal host. A community link the rec-registry leaves empty resolves to `<LEGAL_BASE_URL>/<community>/<slot>/`; unset, links come from the registry only |
 | `JWT_HEADER_NAME` | `x-auth-request-access-token` | Header carrying the bearer token |
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | Allowed CORS origins |
 | `CELINE_OIDC_*` | (from celine-sdk defaults) | OIDC settings — issuer, JWKS URI, audience |

@@ -179,6 +179,8 @@ class CommunityMetaResponse(BaseModel):
     website: Optional[str] = None
     terms_url: Optional[str] = None
     privacy_url: Optional[str] = None
+    statute_url: Optional[str] = None
+    regulations_url: Optional[str] = None
 
 
 # ─── Weather schemas ─────────────────────────────────────────────────────────

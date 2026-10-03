@@ -61,6 +61,10 @@ class Settings(BaseSettings):
 
     # Security
     policy_version: str = "2024-01-01"
+
+    # The legal host serving each community's documents (`celine.webapp.legal`). Empty:
+    # links come from the rec-registry only, as before.
+    legal_base_url: Optional[str] = None
     jwt_header_name: str = "x-auth-request-access-token"
 
     # CORS

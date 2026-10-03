@@ -49,6 +49,14 @@ The response does not say which mode produced it.
 
 `GET /api/community` returns community metadata from the rec-registry, including name, description, areas, and links.
 
+The legal links (`terms_url`, `privacy_url`, `statute_url`, `regulations_url`) follow one
+rule (`celine/webapp/legal.py`):
+1. the community's own registry link, when it is set;
+2. otherwise, when `LEGAL_BASE_URL` is set, the legal host's address for that document,
+   `<LEGAL_BASE_URL>/<community>/<slot>/` (slots `terms`, `privacy`, `statute`,
+   `regulations`);
+3. otherwise none.
+
 ## Notifications
 
 The notification system proxies the nudging-tool:
