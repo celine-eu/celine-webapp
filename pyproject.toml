@@ -23,6 +23,9 @@ dependencies = [
   # was one patch too low, so a resolve was free to pick 1.17.1 — and did, which
   # is an ImportError at startup rather than anything a test would catch.
   # TODO: raise to the celine-sdk release that ships `celine.sdk.posture` (unreleased).
+  # TODO: raise to >=2.0.0 and re-lock once it is published: `api/feedback.py` imports
+  # `celine.sdk.auth.jwt.is_platform_admin` (2.0.0, which also removes `realm_groups`).
+  # Until then consume the SDK editable (`task dev:link` in celine-dev).
   "celine-sdk>=1.17.3",
   "typer>=0.16.1",
 ]

@@ -5,7 +5,7 @@ import binascii
 from datetime import UTC, datetime
 from uuid import UUID
 
-from celine.sdk.auth.jwt import organization_groups, realm_groups
+from celine.sdk.auth.jwt import is_platform_admin, organization_groups
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from sqlalchemy import func, select
 
@@ -31,14 +31,19 @@ def _names(groups: list[str]) -> set[str]:
 
 
 def _require_manager(user, community_key: str) -> None:
-    """Enforce the same realm/REC boundary used by the manager dashboard."""
+    """Allow a platform administrator, or a manager of this one REC.
+
+    Two levels, never merged: the realm role ``platform-admin`` reaches every REC; an
+    organisation's own ``admins``/``managers`` group reaches only the organisation that
+    holds it. A top-level ``groups`` claim, if a token still carries one, grants nothing.
+    """
     claims = user.claims or {}
     raw_scope = claims.get("scope") or ""
     scopes = set(raw_scope.split() if isinstance(raw_scope, str) else raw_scope)
     if "community.read" not in scopes:
         raise HTTPException(status_code=403, detail="Missing community.read scope")
 
-    if "admins" in _names(realm_groups(claims)):
+    if is_platform_admin(claims):
         return
 
     organization = user.get_organization(community_key)

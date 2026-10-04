@@ -289,8 +289,10 @@ trusted. Returns `201` on success.
 
 List participant feedback for one REC, optionally filtered by `status` (`new`, `seen`, or
 `resolved`) and paginated with `page` and `pageSize`. Requires `community.read` and either
-the REC's `admins`/`managers` organization group or the realm `admins` group. User identity,
-IP address, user agent, and raw screenshot bytes are not included in the response.
+the REC's own `admins`/`managers` organization group or the realm role `platform-admin`. A
+group held in another organization, and a top-level realm `groups` claim, grant nothing.
+User identity, IP address, user agent, and raw screenshot bytes are not included in the
+response.
 
 ### `GET /api/feedback/manager/{community_key}/{feedback_id}/screenshot`
 

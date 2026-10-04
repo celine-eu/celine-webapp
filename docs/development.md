@@ -179,12 +179,26 @@ dependency maintenance.
 | `tests/test_data_sharing.py` | the data-sharing surface, onboarding stubbed at the socket |
 | `tests/test_onboarding_dep.py` | that the onboarding client is built per request from the caller's token |
 | `tests/test_api.py`, `tests/test_forecast.py` | pure mapping and window functions |
+| `tests/test_feedback.py` | feedback filing and the manager check: realm role `platform-admin` vs the REC's own groups |
+| `tests/integration/test_real_tokens.py` | the same two levels with tokens a local Keycloak issued — **opt-in**, skipped by default |
 | `tests/fakes.py` | the four upstream fakes |
 
 **If you add a field to a fake, assert it in `test_sdk_contract.py` in the same change.**
 The fakes are written by hand from reading route code, so an invented attribute will
 reproduce whatever you expect of it — that is not a hypothetical, it produced a fully
 reproducible and entirely wrong bug report the day the fakes were written.
+
+`tests/integration/` is the one exception to "needs nothing running", and it is opt-in so
+the default run and CI stay hermetic. With the local stack's Keycloak up, it mints real
+`oauth2_proxy` tokens for the dev users and verifies them against the realm's real JWKS:
+
+```bash
+CELINE_WEBAPP_REAL_TOKENS=1 uv run pytest tests/integration
+```
+
+It refuses any issuer that is not `*.localhost` or loopback. The module docstring lists the
+users, aliases and environment variables it reads; the retired-realm-group case runs only
+when a token carrying one is passed in `CELINE_WEBAPP_LEGACY_GROUP_TOKEN`.
 
 Tests marked `xfail` with `strict=True` are **known defects, pinned deliberately**, each
 with its reason in the marker. Fixing one turns the run red with `XPASS(strict)` — the
