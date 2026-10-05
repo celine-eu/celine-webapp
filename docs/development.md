@@ -47,8 +47,7 @@ In dev the same list is one startup warning. Outside dev `/api/docs`, `/api/redo
 checked (issuer, signature and expiry are). Requiring it needs the realm to put this service's
 audience into the member's token first.
 
-`celine.sdk.posture` ships in the next celine-sdk release; until then link the local checkout
-(`uv pip install --python .venv/bin/python -e ../celine-sdk`).
+`celine.sdk.posture` ships in celine-sdk 2.0.0, the floor in `pyproject.toml`.
 
 ### Data sharing
 

@@ -22,11 +22,9 @@ dependencies = [
   # `celine.sdk.auth.jwt.organization_groups`, which arrived in 1.17.3. The floor
   # was one patch too low, so a resolve was free to pick 1.17.1 — and did, which
   # is an ImportError at startup rather than anything a test would catch.
-  # TODO: raise to the celine-sdk release that ships `celine.sdk.posture` (unreleased),
-  # `docs_urls` included.
-  # TODO: raise to >=2.0.0 and re-lock once it is published: `api/feedback.py` imports
-  # `celine.sdk.auth.jwt.is_platform_admin` (2.0.0, which also removes `realm_groups`).
-  # Until then consume the SDK editable (`task dev:link` in celine-dev).
+  # 2.0.0: first release with `celine.sdk.posture` (`docs_urls` included) and
+  # `celine.sdk.auth.jwt.is_platform_admin`, which `api/feedback.py` imports (2.0.0
+  # also removes `realm_groups`).
   "celine-sdk>=2.0.0",
   "typer>=0.16.1",
 ]
