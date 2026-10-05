@@ -27,7 +27,7 @@ dependencies = [
   # TODO: raise to >=2.0.0 and re-lock once it is published: `api/feedback.py` imports
   # `celine.sdk.auth.jwt.is_platform_admin` (2.0.0, which also removes `realm_groups`).
   # Until then consume the SDK editable (`task dev:link` in celine-dev).
-  "celine-sdk>=1.17.3",
+  "celine-sdk>=2.0.0",
   "typer>=0.16.1",
 ]
 
