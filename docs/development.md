@@ -38,7 +38,9 @@ database is opened — while:
   client id is set; it is used for nudging reminders);
 - `CELINE_OIDC_BASE_URL` / `CELINE_OIDC_JWKS_URI` are left on the SDK's local Keycloak default.
 
-In dev the same list is one startup warning. `task run` exports `CELINE_ENV=dev`;
+In dev the same list is one startup warning. Outside dev `/api/docs`, `/api/redoc` and
+`/api/openapi.json` are not mounted (`404`) unless `CELINE_PUBLIC_DOCS=true`.
+`task run` exports `CELINE_ENV=dev`;
 `CELINE_ENV=staging task run` runs the same entry point hardened.
 
 `CELINE_OIDC_AUDIENCE` is not required: with it unset the member token's audience is not

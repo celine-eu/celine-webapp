@@ -3,6 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from celine.sdk.posture import docs_urls
 
 from celine.webapp.settings import posture_guard, settings
 from celine.webapp.db import init_db
@@ -27,9 +28,13 @@ def create_app() -> FastAPI:
         description="Renewable Energy Community Participant Webapp Backend",
         version="0.1.0",
         lifespan=lifespan,
-        openapi_url="/api/openapi.json",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
+        # Outside dev none of the three is mounted unless CELINE_PUBLIC_DOCS=true.
+        **docs_urls(
+            docs_url="/api/docs",
+            redoc_url="/api/redoc",
+            openapi_url="/api/openapi.json",
+            env=settings.posture_env,
+        ),
     )
 
     app.add_middleware(
