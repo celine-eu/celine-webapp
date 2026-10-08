@@ -2,6 +2,50 @@
 
 <!-- version list -->
 
+## v1.16.0 (2026-10-08)
+
+### Bug Fixes
+
+- Correct data sharing path
+  ([`89a8248`](https://github.com/celine-eu/celine-webapp/commit/89a8248beed4bb06678d178769a5dfd12a4f1f14))
+
+- Raise the celine-sdk floor to the version that has organization_groups
+  ([`d9f7236`](https://github.com/celine-eu/celine-webapp/commit/d9f723660a9a766146cb780aeb8839ea12c8429d))
+
+- Remove logs leaking meter ids, closes #27
+  ([`362e0fc`](https://github.com/celine-eu/celine-webapp/commit/362e0fcd66415841028fd751cc288c7728a0aeb1))
+
+- Review policy acceptance
+  ([`1dce436`](https://github.com/celine-eu/celine-webapp/commit/1dce436f9c815fc9fd3c13c9aa7f8c07d7d4d4fa))
+
+- Serve api docs only in dev unless CELINE_PUBLIC_DOCS is set
+  ([`dc950b2`](https://github.com/celine-eu/celine-webapp/commit/dc950b203871ff41ca8c93fea7f5c253d2edcfb3))
+
+### Chores
+
+- Drop the celine-sdk release TODOs now that 2.0.0 ships them
+  ([`5113e6f`](https://github.com/celine-eu/celine-webapp/commit/5113e6f0714ecd47df2f5a1db26ba8848f0906b4))
+
+- Upgrade celine-sdk to 2.0.0
+  ([`78c005e`](https://github.com/celine-eu/celine-webapp/commit/78c005edefd7952ad3fa4f67688992c599da7102))
+
+### Documentation
+
+- Add features
+  ([`8227b4f`](https://github.com/celine-eu/celine-webapp/commit/8227b4f9637bedf3dfaf16a868dcb3073275014f))
+
+### Features
+
+- Add legal references
+  ([`b77b8fe`](https://github.com/celine-eu/celine-webapp/commit/b77b8fe5edbb13a203da74fcba893e02b4c91365))
+
+- Track viewed sharing offer
+  ([`8f68c6c`](https://github.com/celine-eu/celine-webapp/commit/8f68c6c6d434178c26c1bbd9118de066d3469d00))
+
+- Update data model to store legal evidences
+  ([`8e48b37`](https://github.com/celine-eu/celine-webapp/commit/8e48b3749e6302fa7b03e950b6c04242dcf506c4))
+
+
 ## v1.15.1 (2026-09-09)
 
 ### Bug Fixes
