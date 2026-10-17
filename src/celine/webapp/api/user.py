@@ -79,14 +79,40 @@ async def community_documents(
     known = await legal.current(base, key)
     documents = legal.gate_documents(base, key, known, legal.locales_from(request.headers.get("accept-language")))
     out = []
+    at_application: legal.Accepted | None = None
+    asked_onboarding = False
     for document in documents:
         row = await _latest_acceptance(user_sub, key, document.document, db)
-        out.append((document, legal.needs_acceptance(
+        needed = legal.needs_acceptance(
             document,
             row.policy_version if row else None,
             row.accepted_at if row else None,
             row is not None,
-        )))
+        )
+        if needed and document.version is not None:
+            # A miss: the member may have accepted exactly this text when they applied.
+            if not asked_onboarding:
+                asked_onboarding = True
+                at_application = await legal.onboarding_acceptances(
+                    user_sub, _extract_token(request), app_settings.onboarding_api_url
+                )
+            found = legal.accepted_at_application(document, at_application)
+            if found is not None:
+                db.add(PolicyAcceptance(
+                    user_id=user_sub,
+                    policy_version=document.version,
+                    accepted_at=found.accepted_at or datetime.now(timezone.utc),
+                    community_key=key,
+                    document=document.document,
+                    locale=legal.language_of(document, found.sha256),
+                    document_url=found.url,
+                    document_sha256=found.sha256,
+                    source=legal.FROM_ONBOARDING,
+                    source_ref=at_application.submission_id,
+                ))
+                await db.commit()
+                needed = False
+        out.append((document, needed))
     return key, out
 
 
@@ -133,7 +159,8 @@ async def me(
     if per_document is not None:
         _, documents = per_document
         legal_documents = [
-            LegalDocumentOut(document=d.document, url=d.url, version=d.version, title=d.title, required=needed)
+            LegalDocumentOut(document=d.document, url=d.url, version=d.version, title=d.title, required=needed,
+                             declaration=d.declaration)
             for d, needed in documents
         ]
         required = any(needed for _, needed in documents)
@@ -191,6 +218,12 @@ async def accept_terms(
     if per_document is not None:
         key, documents = per_document
         shown = {d.document: d.version for d in body.documents or []}
+        if any(d.document == legal.CLAUSES and needed for d, needed in documents) and legal.CLAUSES not in shown:
+            # A separate act (Art. 1341(2) c.c.): never implied by accepting the rest.
+            raise HTTPException(
+                status_code=422,
+                detail=f"{legal.CLAUSES} is approved on its own: name it in `documents`",
+            )
         now = datetime.now(timezone.utc)
         for document, needed in documents:
             if not needed:

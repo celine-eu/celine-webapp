@@ -48,6 +48,10 @@ class PolicyAcceptance(Base):
     locale: Mapped[Optional[str]] = mapped_column(String(16))
     document_url: Mapped[Optional[str]] = mapped_column(Text)
     document_sha256: Mapped[Optional[str]] = mapped_column(String(64))
+    # Where the acceptance was given: None here, in the gate; `onboarding` for one copied
+    # from the member's application, with its submission id in `source_ref`.
+    source: Mapped[Optional[str]] = mapped_column(String(32))
+    source_ref: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 class Settings(Base):

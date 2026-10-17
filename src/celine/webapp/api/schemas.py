@@ -34,6 +34,10 @@ class LegalDocumentOut(BaseModel):
     version: Optional[str] = None
     title: Optional[str] = None
     required: bool = True
+    # What the member declares, in the text's own words, shown as it is beside its own
+    # unticked box: the terms' general acceptance, or the specific approval of their
+    # clauses (`terms_clauses`, a separate act). None: the document is accepted as before.
+    declaration: Optional[str] = None
 
 
 class MeResponse(BaseModel):

@@ -17,7 +17,9 @@ Returns the authenticated user's profile, terms acceptance status, and settings.
 
 ### `POST /api/terms/accept`
 
-Record the user's acceptance of the current terms version.
+Record the user's acceptance of the current terms version. With a legal host, `documents`
+lists the documents and versions shown; `terms_clauses`, when required, must be named in it
+(422 otherwise) — see `docs/features.md`, Terms Acceptance.
 
 ---
 

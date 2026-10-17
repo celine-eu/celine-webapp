@@ -16,6 +16,26 @@ document is accepted without a version, and the date decides against the version
 `published_at` once it is known. `current.json` is refreshed every five minutes, and the
 last good copy is kept while the host is down.
 
+**The terms' clauses.** When the terms' text carries a specific approval of its onerous
+clauses (`declarations.<lang>.specific_approval` in `current.json`), the gate asks it as a
+document of its own, `terms_clauses`: the terms' url, version and sha256, its own row. It is
+a separate act (Art. 1341(2) c.c.): the frontend shows it as its own unticked box, worded
+by the text (`declaration`), and `POST /api/terms/accept` refuses with 422 a request that
+does not name it while it is required. A document whose text carries a general declaration
+(the terms' `declarations.<lang>.general`) has it in `declaration` too, shown as its box's
+words. No words, no box: without them `terms_clauses` is not asked. A member who accepted
+the terms before the box existed is asked the clauses alone.
+
+**Accepted once, at application.** On a miss — a document the member has no current
+acceptance of — and with `ONBOARDING_API_URL` set, the gate asks onboarding
+(`GET /api/me/acceptances`, the member's own token) what the member accepted when they
+applied. An acceptance whose version **and** sha256 match the text served now, in any of
+its languages, is copied as a row with `source` `onboarding` and the submission id in
+`source_ref`, and is not asked. Anything else is asked: another version or text, no
+sha256, onboarding refusing, down or unset, or no application. Onboarding's answer is kept
+for five minutes per member, so a deployment without onboarding does not wait on it at
+every request.
+
 **Otherwise** (no legal host, or the member's community is unknown) the gate is the
 deployment-wide `POLICY_VERSION`, as before: raising it asks every member again.
 

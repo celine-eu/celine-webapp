@@ -59,24 +59,41 @@ def resolve_link(
 # members who have never accepted it, and records the acceptance with its date and no
 # version (the host's dated history says which version that was). `current.json` is
 # refreshed every few minutes and the last good copy kept while the host is down.
+#
+# `terms_clauses` is the specific approval of the terms' onerous clauses (Art. 1341(2)
+# c.c.): the terms' own page, version and sha256, asked as a separate act only when the
+# text carries the words for it (`declarations.<lang>.specific_approval`). It is recorded
+# on its own row, so a member who accepted the terms is asked the approval alone.
+#
+# **Accepted once, at application.** A document the member has not accepted here may have
+# been accepted in onboarding's form. On such a miss the gate asks onboarding, with the
+# member's own token, and copies an acceptance whose version **and** sha256 match the text
+# the host serves now, marked as coming from onboarding with the submission id. Anything
+# else is asked: no match, onboarding unset or down, no application.
 
 import logging  # noqa: E402
 import time  # noqa: E402
 from dataclasses import dataclass  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
+from typing import Any  # noqa: E402
 
 import httpx  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 #: The documents the gate asks to accept, as slots of the legal host.
-GATE_DOCUMENTS: tuple[str, ...] = ("terms", "privacy")
+GATE_DOCUMENTS: tuple[str, ...] = ("terms", "terms_clauses", "privacy")
+#: The approval of the terms' clauses: given on the terms' text, its own record.
+CLAUSES, CLAUSES_OF = "terms_clauses", "terms"
+#: `policy_acceptance.source` of a row copied from onboarding's application.
+FROM_ONBOARDING = "onboarding"
 REFRESH_SECONDS = 300.0
 TIMEOUT_SECONDS = 3.0
 
 _current: dict[str, dict] = {}
 _fetched_at: dict[str, float] = {}
 _community_of: dict[str, tuple[str | None, float]] = {}
+_onboarding_of: dict[str, tuple["Accepted | None", float]] = {}
 
 
 @dataclass
@@ -88,6 +105,20 @@ class LegalDocument:
     sha256: str | None
     title: str | None
     locale: str | None
+    #: What the member declares, in the text's own words: `general` for the terms,
+    #: `specific_approval.text` for their clauses. None for a text that has none.
+    declaration: str | None = None
+    #: The sha256 of the text in every language the host publishes it in: an acceptance
+    #: made in another language is of the same version.
+    sha256_by_lang: dict[str, str] | None = None
+
+
+@dataclass
+class Accepted:
+    """What the member accepted at application, as onboarding recorded it."""
+
+    submission_id: str
+    by_slot: dict[str, Any]  # legal slot → the SDK's AcceptanceReadSchema
 
 
 async def current(base_url: str, community_key: str, client: httpx.AsyncClient | None = None) -> dict | None:
@@ -114,6 +145,12 @@ def gate_documents(base_url: str, community_key: str, known: dict | None, locale
     """The documents to accept, from `current.json` (or their slot addresses before it). Pure."""
     documents = []
     for slot in GATE_DOCUMENTS:
+        if slot == CLAUSES:
+            clauses = _clauses_of(next((d for d in documents if d.document == CLAUSES_OF), None),
+                                  (known or {}).get("slots", {}).get(CLAUSES_OF))
+            if clauses is not None:
+                documents.append(clauses)
+            continue
         if known is None:
             documents.append(LegalDocument(slot, slot_url(base_url, community_key, slot), None, None, None, None, None))
             continue
@@ -129,11 +166,73 @@ def gate_documents(base_url: str, community_key: str, known: dict | None, locale
         lang = next((lang for lang in locales if lang in paths), next(iter(paths), None))
         if lang is None:
             continue
+        declarations = (entry.get("declarations") or {}).get(lang) or {}
         documents.append(LegalDocument(
             slot, base_url.rstrip("/") + paths[lang], entry.get("version"), entry.get("published_at"),
             (entry.get("sha256") or {}).get(lang), (entry.get("titles") or {}).get(lang), lang,
+            declaration=declarations.get("general") if isinstance(declarations, dict) else None,
+            sha256_by_lang=dict(entry.get("sha256") or {}),
         ))
     return documents
+
+
+def _clauses_of(terms: LegalDocument | None, entry: dict | None) -> LegalDocument | None:
+    """The approval of the terms' clauses, on the terms' page: only with its words. Pure."""
+    if terms is None or not entry or terms.locale is None:
+        return None
+    approval = ((entry.get("declarations") or {}).get(terms.locale) or {}).get("specific_approval")
+    if not isinstance(approval, dict) or not approval.get("text"):
+        return None  # no words, no box
+    return LegalDocument(CLAUSES, terms.url, terms.version, terms.published_at, terms.sha256, terms.title,
+                         terms.locale, declaration=approval["text"], sha256_by_lang=terms.sha256_by_lang)
+
+
+def accepted_at_application(document: LegalDocument, accepted: Accepted | None):
+    """Onboarding's acceptance of exactly this text, if it has one. Pure.
+
+    The version must be the one served now, and the sha256 that of the text in one of the
+    languages it is published in. Without both on either side nothing matches: a version
+    alone does not say which text was read.
+    """
+    if accepted is None or document.version is None or not document.sha256_by_lang:
+        return None
+    found = accepted.by_slot.get(document.document)
+    if found is None or not found.version or not found.sha256:
+        return None
+    if str(found.version) != document.version or found.sha256 not in document.sha256_by_lang.values():
+        return None
+    return found
+
+
+def language_of(document: LegalDocument, sha256: str) -> str | None:
+    """The language whose text has *sha256*. Pure."""
+    return next((lang for lang, sha in (document.sha256_by_lang or {}).items() if sha == sha256), None)
+
+
+async def onboarding_acceptances(user_sub: str, token: str | None, onboarding_url: str | None) -> Accepted | None:
+    """What the member accepted at application, from onboarding, cached for a few minutes.
+
+    Read with the member's own token. None when onboarding is not configured, does not
+    answer, or holds no application for them: the gate then asks.
+    """
+    if not token or not onboarding_url:
+        return None
+    cached = _onboarding_of.get(user_sub)
+    if cached and time.monotonic() - cached[1] < REFRESH_SECONDS:
+        return cached[0]
+    found: Accepted | None = None
+    try:
+        from celine.sdk.onboarding import OnboardingClient
+
+        answer = await OnboardingClient(onboarding_url, default_token=token,
+                                        timeout=TIMEOUT_SECONDS).get_acceptances()
+        if answer.submission_id:
+            found = Accepted(str(answer.submission_id), {a.legal_slot: a for a in answer.acceptances or []})
+    except Exception as exc:
+        # Cached too: a deployment without onboarding must not wait on it at every request.
+        logger.warning("legal gate: onboarding's acceptances of %s unknown (%s)", user_sub, exc)
+    _onboarding_of[user_sub] = (found, time.monotonic())
+    return found
 
 
 def needs_acceptance(document: LegalDocument, accepted_version: str | None, accepted_at: datetime | None,
