@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.0 (2026-10-17)
+
+### Features
+
+- The terms gate asks the clauses apart and reads the acceptances given at application
+  ([`af2fdfe`](https://github.com/celine-eu/celine-webapp/commit/af2fdfe4d76065c02e058e18dbe10d8ee69a40c1))
+
+
 ## v1.16.0 (2026-10-08)
 
 ### Bug Fixes
