@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.17.1 (2026-10-26)
+
+### Bug Fixes
+
+- **suggestions**: Forward 409/503 refusals from flexibility-api
+  ([`6264da5`](https://github.com/celine-eu/celine-webapp/commit/6264da52be4691409eafcef2253c96219b2b32a3))
+
+
 ## v1.17.0 (2026-10-17)
 
 ### Features
