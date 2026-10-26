@@ -1,5 +1,6 @@
 # celine/webapp/api/suggestions.py
 """Suggestions routes — GET /api/suggestions, POST /api/suggestions/{id}/respond."""
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
@@ -9,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, func
 
 from celine.sdk.auth.oidc import OidcClientCredentialsProvider
+from celine.sdk.openapi.flexibility.errors import UnexpectedStatus
 from celine.webapp.api.deps import DbDep, FlexibilityDep, UserDep
 from celine.webapp.api.schemas import (
     BadgeItem,
@@ -21,6 +23,7 @@ from celine.webapp.api.schemas import (
 )
 from celine.webapp.db.models import SuggestionInteraction, UserBadge
 from celine.webapp.settings import settings
+from celine.webapp.services.log_safety import failure
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,45 @@ BADGES: dict[str, dict] = {
 }
 
 POINTS_PER_LEVEL = 100
+
+#: flexibility-api's refusals of a respond that belong to the member unchanged:
+#: 409 ``no_meter`` / ``not_a_member`` and 503 ``dt_unavailable``. The frontend
+#: words its message on ``detail.code``, so the status and the code cross as-is.
+_FORWARDED_RESPOND_STATUSES = frozenset({409, 503})
+
+
+def _forwarded_refusal(exc: Exception) -> HTTPException | None:
+    """Turn a flexibility-api refusal into the one the caller receives.
+
+    The SDK documents only 200/422 for respond, so a 409/503 is raised as
+    ``UnexpectedStatus`` carrying the raw body.
+
+    Args:
+        exc: What ``FlexibilityClient.respond_to_suggestion`` raised.
+
+    Returns:
+        An ``HTTPException`` with the upstream status and a ``{code, message}``
+        detail (``code`` is ``None`` when the body carries none), or ``None``
+        when the failure is not one to forward.
+    """
+    if not isinstance(exc, UnexpectedStatus):
+        return None
+    if exc.status_code not in _FORWARDED_RESPOND_STATUSES:
+        return None
+    code: str | None = None
+    message = ""
+    try:
+        detail = json.loads(exc.content).get("detail")
+    except (ValueError, AttributeError):
+        detail = None
+    if isinstance(detail, dict):
+        if isinstance(detail.get("code"), str):
+            code = detail["code"]
+        if isinstance(detail.get("message"), str):
+            message = detail["message"]
+    return HTTPException(
+        status_code=exc.status_code, detail={"code": code, "message": message}
+    )
 
 
 
@@ -248,8 +290,19 @@ async def suggestion_respond(
             period_end=body.period_end,
         )
     except Exception as exc:
+        refusal = _forwarded_refusal(exc)
+        if refusal is not None:
+            # A refusal about this member: nothing is recorded, the member is told why.
+            logger.info(
+                "flexibility-api refused respond for suggestion=%s (%s)",
+                suggestion_id,
+                failure(exc),
+            )
+            raise refusal from exc
         logger.warning(
-            "flexibility-api respond failed for suggestion=%s: %s", suggestion_id, exc
+            "flexibility-api respond failed for suggestion=%s (%s)",
+            suggestion_id,
+            failure(exc),
         )
 
     async with db as session:

@@ -89,6 +89,19 @@ Schedule a flexibility reminder for a suggestion via the nudging-tool.
 
 Accept or reject a flexibility suggestion. Creates a commitment in the flexibility-api.
 
+When the flexibility-api refuses the response, its status is passed through and nothing is
+recorded locally (no interaction, no badge). The body is
+`{"detail": {"code": <string|null>, "message": <string>}}`:
+
+| Status | `code` | Meaning |
+|---|---|---|
+| 409 | `no_meter` | the member has no meter, so the commitment could never be settled |
+| 409 | `not_a_member` | the member has no community membership |
+| 503 | `dt_unavailable` | the Digital Twin or registry is unreachable; retry later |
+
+A 409 or 503 without a `code` in the upstream body is passed through with `code: null`.
+Any other upstream failure is logged and the response is recorded as before.
+
 ### `DELETE /api/commitments/{commitment_id}`
 
 Cancel an active commitment.
