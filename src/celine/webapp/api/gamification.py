@@ -19,17 +19,12 @@ from celine.webapp.api.schemas import (
 from celine.webapp.db.models import UserBadge, SuggestionInteraction
 
 from celine.webapp.services.log_safety import failure
+from celine.webapp.services.badges import BADGES
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["gamification"])
 
-BADGES: dict[str, dict] = {
-    "first-shift":    {"icon": "zap",         "min_actions": 1},
-    "peak-saver":     {"icon": "sun",         "min_actions": 5},
-    "solar-champion": {"icon": "leaf",        "min_points": 500},
-    "streak-3":       {"icon": "trending-up", "streak_days": 3},
-}
 
 POINTS_PER_LEVEL = 100
 

@@ -23,18 +23,13 @@ from celine.webapp.api.schemas import (
 )
 from celine.webapp.db.models import SuggestionInteraction, UserBadge
 from celine.webapp.settings import settings
+from celine.webapp.services.badges import BADGES
 from celine.webapp.services.log_safety import failure
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["suggestions"])
 
-BADGES: dict[str, dict] = {
-    "first-shift":    {"icon": "zap",         "min_actions": 1},
-    "peak-saver":     {"icon": "sun",         "min_actions": 5},
-    "solar-champion": {"icon": "leaf",        "min_points": 500},
-    "streak-3":       {"icon": "trending-up", "streak_days": 3},
-}
 
 POINTS_PER_LEVEL = 100
 
@@ -129,11 +124,13 @@ async def suggestions(
                     )
                 ).scalars().all()
             )
-        return [
-            SuggestionItem(**item.model_dump())
-            for item in items
-            if item.id not in hidden_ids
-        ]
+        visible = [SuggestionItem(**item.model_dump()) for item in items if item.id not in hidden_ids]
+        if settings.gamification_variant == "fair":
+            # Fair variant: a kept commitment is worth a fixed number of points, the same
+            # for everyone (spec §4.4) — never the kWh-proportional estimate.
+            for suggestion in visible:
+                suggestion.reward_points = settings.fair_points_per_kept
+        return visible
     except Exception as exc:
         logger.warning("Failed to fetch suggestions from flexibility-api: %s", exc)
         return []
@@ -222,7 +219,7 @@ async def suggestion_remind(
         user_id=user.sub,
         period_start=period_start,
         period_end=period_end,
-        reward_points=body.reward_points,
+        reward_points=settings.fair_points_per_kept if settings.gamification_variant == "fair" else body.reward_points,
         lang=body.lang,
     )
 

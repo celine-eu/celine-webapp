@@ -59,6 +59,8 @@ class MeResponse(BaseModel):
     # Whether the data-sharing surface exists at all. The UI hides the section
     # when false rather than showing one that answers 404.
     data_sharing_enabled: bool = False
+    # Which gamification panel the UI renders: today's points or the fair weekly boards.
+    gamification_variant: Literal["points", "fair"] = "points"
 
 
 class OnboardingSeenRequest(BaseModel):
@@ -356,6 +358,65 @@ class GamificationResponse(BaseModel):
     season_end: Optional[str] = None     # ISO date, exclusive (next season start)
     season_base_points: Optional[int] = None
     season_bonus_points: Optional[int] = None
+
+
+# ─── Fair gamification schemas (variant "fair") ───────────────────────────────
+
+class BoardStanding(BaseModel):
+    """Standing in one of the three season boards, with the reason when unranked."""
+
+    board: Literal["virtuosi", "in_crescita", "generale"]
+    score: Optional[float] = None
+    rank: Optional[int] = None
+    total_ranked: int = 0
+    weeks_counted: int = 0
+    reason: str                       # 'ranked', a rank_reason code, or 'min_weeks_board'
+    params: dict[str, float | int | str] = Field(default_factory=dict)
+
+
+class FairWeeklyScore(BaseModel):
+    """One completed week: points per component, reason codes and the numbers behind them."""
+
+    week_start: str                   # YYYY-MM-DD (Monday)
+    is_valid_week: bool
+    level_points: Optional[int] = None
+    level_reason: str
+    growth_points: Optional[int] = None
+    growth_reason: str
+    actions_points: int = 0
+    actions_reason: str
+    kept_count: int = 0
+    surplus_hours: int = 0
+    weekly_points: int = 0
+    flags: list[str] = Field(default_factory=list)
+    params: dict[str, float | int | str] = Field(default_factory=dict)
+
+
+class FairSeason(BaseModel):
+    start: str                        # ISO date, inclusive
+    end: str                          # ISO date, exclusive
+    elapsed_weeks: int
+    valid_weeks: int
+    required_weeks: int
+
+
+class GamificationFairResponse(BaseModel):
+    variant: Literal["fair"] = "fair"
+    status: Literal["ranked", "not_yet_ranked", "silent", "quarantined", "not_eligible", "no_device", "unavailable"]
+    status_reason: Optional[str] = None
+    season: Optional[FairSeason] = None
+    category: Optional[Literal["household", "public_entity"]] = None
+    pv_class: Optional[Literal["pv", "no_pv"]] = None
+    reference_group_size: Optional[int] = None
+    season_points: int = 0
+    level: int = 1
+    next_level_at: int
+    badges: list[BadgeItem] = Field(default_factory=list)
+    boards: list[BoardStanding] = Field(default_factory=list)
+    latest_week: Optional[FairWeeklyScore] = None
+    weekly_history: list[FairWeeklyScore] = Field(default_factory=list)   # oldest first
+    actions: dict[str, int] = Field(default_factory=dict)                   # points_per_kept, weekly_cap, kept_season, surplus_hours_season
+    pending_commitment: Optional[FlexibilityCommitmentItem] = None
 
 
 # ─── Commitment history schemas ────────────────────────────────────────────────

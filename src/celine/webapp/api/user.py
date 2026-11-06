@@ -188,6 +188,7 @@ async def me(
         onboarding_seen=settings.onboarding_seen_at is not None,
         onboarding_seen_pages=onboarding_seen_pages,
         data_sharing_enabled=app_settings.data_sharing_ready,
+        gamification_variant=app_settings.gamification_variant,
     )
 
 

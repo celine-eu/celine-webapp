@@ -2,7 +2,7 @@
 
 import socket
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
@@ -105,6 +105,18 @@ class Settings(BaseSettings):
     # identity registry, no connector, no provenance, and no service account.
     # `onboarding_api_url` above is the only address this feature needs.
     data_sharing_enabled: bool = False
+
+    # Which gamification the participant app shows (demo3 spec 2026-10-07 "gamification
+    # equa", design 2026-10-09). "points": today's kWh-based season points
+    # (/api/gamification). "fair": the weekly Level / Growth / Actions boards computed in
+    # shadow by the pipeline (rec_fair_* tables, /api/gamification/fair). Flipped once per
+    # season start; the UI reads it from /api/me and picks the panel.
+    gamification_variant: Literal["points", "fair"] = "points"
+    # Σ weekly fair points per level — mirrors flexibility_config.yaml `fair.points_per_level`.
+    fair_points_per_level: int = 150
+    # Fixed points a kept commitment earns — mirrors `fair.points_per_kept`; shown on the
+    # suggestion cards and reminders under the "fair" variant.
+    fair_points_per_kept: int = 5
 
     # How long a decision stands before the member is asked to look at it again.
     # A standing consent nobody ever revisits is what GDPR Art. 7(3) is
