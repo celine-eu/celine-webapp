@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.18.0 (2026-11-06)
+
+### Features
+
+- Add fair gamification endpoint behind GAMIFICATION_VARIANT
+  ([`8343dfe`](https://github.com/celine-eu/celine-webapp/commit/8343dfe3dc596396c3845e7efc712a202d8b1447))
+
+
 ## v1.17.1 (2026-10-26)
 
 ### Bug Fixes
